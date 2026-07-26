@@ -202,12 +202,15 @@ def poste_vers_ligne(poste):
 
 def calculer_contexte_ligue(df, cols_journees):
     """Précalcule, une fois pour tout le dataframe chargé, les moyennes de ligne
-    (ATT/MIL/DEF/GB) et la note saison médiane par poste. Contexte réutilisé par
-    get_joueur_info() pour ProbaBut/ProbaArret (simuler_proba_but) et pour le
-    plancher de qualité de la régularité (même principe que etiquette_regularite) :
-    évite de recalculer ces agrégats à chaque appel individuel."""
+    (ATT/MIL/DEF/GB), la note saison médiane par poste et la médiane de buts/match
+    par poste. Contexte réutilisé par get_joueur_info() pour ProbaBut/ProbaArret
+    (simuler_proba_but), pour le plancher de qualité de la régularité (même
+    principe que etiquette_regularite), et comme valeur de repli de buts_par_match
+    avant qu'un joueur ait disputé son premier match cette saison : évite de
+    recalculer ces agrégats à chaque appel individuel."""
     moyennes_par_ligne = {'ATT': [], 'MIL': [], 'DEF': [], 'GB': []}
     notes_par_poste = {}
+    buts_par_match_par_poste = {}
     for _, row in df.iterrows():
         notes = [row[c] for c in cols_journees if row[c] > 0]
         poste = row.get('Poste', 'MO')
@@ -216,13 +219,18 @@ def calculer_contexte_ligue(df, cols_journees):
         note_saison = pd.to_numeric(row.get('Note', None), errors='coerce')
         if not pd.isna(note_saison):
             notes_par_poste.setdefault(poste, []).append(note_saison)
+        matchs = len(notes)
+        buts = pd.to_numeric(row.get('Buts', 0), errors='coerce')
+        if matchs > 0 and not pd.isna(buts):
+            buts_par_match_par_poste.setdefault(poste, []).append(buts / matchs)
 
     moyennes_lignes = {ligne: (np.mean(vals) if vals else 5.0) for ligne, vals in moyennes_par_ligne.items()}
     notes_mediane_poste = {poste: np.median(vals) for poste, vals in notes_par_poste.items()}
-    return moyennes_lignes, notes_mediane_poste
+    buts_mediane_poste = {poste: np.median(vals) for poste, vals in buts_par_match_par_poste.items()}
+    return moyennes_lignes, notes_mediane_poste, buts_mediane_poste
 
 def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, journee_actuelle=999,
-                     moyennes_lignes=None, notes_mediane_poste=None):
+                     moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None):
     row = df[df['Joueur'].str.lower() == nom_joueur.strip().lower()]
     if len(row) == 0:
         return None
@@ -237,7 +245,16 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
 
     buts_moy = pd.to_numeric(row.get('Buts', 0), errors='coerce')
     matchs = compter_matchs(row, cols_journees)
-    buts_par_match = (buts_moy / matchs) if matchs > 0 and not pd.isna(buts_moy) else 0
+    if matchs > 0 and not pd.isna(buts_moy):
+        buts_par_match = buts_moy / matchs
+    else:
+        # Avant le 1er match de la saison : repli sur la MÉDIANE (pas la moyenne)
+        # de buts/match des joueurs du même poste — la distribution est très
+        # asymétrique (ex. la plupart des défenseurs ne marquent jamais, une
+        # minorité aux coups de pied arrêtés tire la moyenne vers le haut).
+        buts_par_match = (
+            buts_mediane_poste.get(poste, 0) if buts_mediane_poste is not None else 0
+        )
 
     notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
     moyenne_notes = np.mean(notes_jouees) if notes_jouees else (note_pred if note_pred is not None else 5.0)
@@ -343,7 +360,7 @@ def simuler_proba_but(moyenne, ecart_type, poste, moyennes_lignes, n_simulations
     return float(np.mean(reussite))
 
 
-def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=500,
+def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                       bonus_moi=None, bonus_adv=None,
                       domicile=True, joueur_uber=None):
     victoires = 0

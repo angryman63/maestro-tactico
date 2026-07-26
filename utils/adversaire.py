@@ -29,12 +29,12 @@ bonus_key_map = {
 }
 
 def meilleure_compo(noms_joueurs, df, cols_journees, strategie, df_n1, cols_n1, journee_actuelle,
-                     moyennes_lignes, notes_mediane_poste):
+                     moyennes_lignes, notes_mediane_poste, buts_mediane_poste):
     joueurs_info = []
     for nom in [n.strip() for n in noms_joueurs.split('\n') if n.strip()]:
         info = get_joueur_info(
             nom, df, cols_journees, df_n1, cols_n1, journee_actuelle,
-            moyennes_lignes, notes_mediane_poste
+            moyennes_lignes, notes_mediane_poste, buts_mediane_poste
         )
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
@@ -88,7 +88,7 @@ def _roster_html(equipe, extra_badge_fn=None):
 def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
     inject_style()
 
-    moyennes_lignes, notes_mediane_poste = calculer_contexte_ligue(df, cols_journees)
+    moyennes_lignes, notes_mediane_poste, buts_mediane_poste = calculer_contexte_ligue(df, cols_journees)
 
     separateur("STRATÉGIE")
     strategie_jeu = st.radio(
@@ -198,7 +198,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             for nom in [n.strip() for n in noms_titu.split('\n') if n.strip()]:
                 info = get_joueur_info(
                     nom, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
-                    moyennes_lignes, notes_mediane_poste
+                    moyennes_lignes, notes_mediane_poste, buts_mediane_poste
                 )
                 if info:
                     titu_info.append(info)
@@ -223,7 +223,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             equipe_adv, _ = meilleure_compo(
                 adv_joueurs, df, cols_journees, strategie_jeu,
                 df_n1, cols_journees_n1, journee_actuelle,
-                moyennes_lignes, notes_mediane_poste
+                moyennes_lignes, notes_mediane_poste, buts_mediane_poste
             )
 
         # Alertes joueurs non trouvés
@@ -268,14 +268,14 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         bonus_adv_key = bonus_key_map.get(bonus_adv_restant, None)
 
         # Simulation sans bonus
-        with st.spinner("Simulation en cours (500 scénarios)..."):
+        with st.spinner("Simulation en cours (2000 scénarios)..."):
             res_sb = monte_carlo_match(
                 joueurs_moi_mc, joueurs_adv_mc,
-                n_simulations=500,
+                n_simulations=2000,
                 domicile=domicile
             )
 
-        separateur("RÉSULTAT — 500 SCÉNARIOS")
+        separateur("RÉSULTAT — 2000 SCÉNARIOS")
 
         col_s1, col_s2, col_s3 = st.columns([2, 1, 2])
 
