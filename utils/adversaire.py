@@ -8,10 +8,9 @@ from utils.table_style import inject_style, pill, escape, separateur
 liste_bonus = [
     "💼 Valise à Nanard — annule 1 but adverse",
     "🪞 Miroir — retourne le bonus adverse",
-    "💃 Zahia — +1 à tous mes joueurs",
+    "💃 Zahia — +0,5 à tous mes joueurs",
     "🦷 Suarez — -1 au gardien adverse",
     "👊 Tonton Pat' — annule remplacements adverses",
-    "🟥 Chapron Rouge — retire 1 joueur adverse au hasard",
     "💻 Cheat Code — -0.5 à tous joueurs adverses",
     "🍔 Uber Eats — +1 à un joueur choisi",
 ]
@@ -19,10 +18,9 @@ liste_bonus = [
 bonus_key_map = {
     "💼 Valise à Nanard — annule 1 but adverse": "valise",
     "🪞 Miroir — retourne le bonus adverse": "miroir",
-    "💃 Zahia — +1 à tous mes joueurs": "zahia",
+    "💃 Zahia — +0,5 à tous mes joueurs": "zahia",
     "🦷 Suarez — -1 au gardien adverse": "suarez",
     "👊 Tonton Pat' — annule remplacements adverses": "tonton",
-    "🟥 Chapron Rouge — retire 1 joueur adverse au hasard": "chapron",
     "💻 Cheat Code — -0.5 à tous joueurs adverses": "cheat_code",
     "🍔 Uber Eats — +1 à un joueur choisi": "uber_eats",
     "Aucun": None,

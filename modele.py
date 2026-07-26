@@ -398,7 +398,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
         if bonus_moi == 'zahia':
             for k in notes_moi:
                 if notes_moi[k]['ligne'] != 'GB':
-                    notes_moi[k]['note'] = min(10, notes_moi[k]['note'] + 1)
+                    notes_moi[k]['note'] = min(10, notes_moi[k]['note'] + 0.5)
         elif bonus_moi == 'suarez':
             for k in notes_adv:
                 if notes_adv[k]['ligne'] == 'GB':
@@ -412,20 +412,11 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             for k in notes_moi:
                 if k.lower() == nom_lower:
                     notes_moi[k]['note'] = min(10, notes_moi[k]['note'] + 1)
-        elif bonus_moi == 'chapron':
-            meilleur_nom = None
-            meilleur_note = -1
-            for k, v in notes_moi.items():
-                if v['ligne'] != 'GB' and v['note'] > meilleur_note:
-                    meilleur_note = v['note']
-                    meilleur_nom = k
-            if meilleur_nom:
-                notes_adv[meilleur_nom]['note'] = 2.5
 
         if bonus_adv == 'zahia':
             for k in notes_adv:
                 if notes_adv[k]['ligne'] != 'GB':
-                    notes_adv[k]['note'] = min(10, notes_adv[k]['note'] + 1)
+                    notes_adv[k]['note'] = min(10, notes_adv[k]['note'] + 0.5)
         elif bonus_adv == 'suarez':
             for k in notes_moi:
                 if notes_moi[k]['ligne'] == 'GB':
@@ -434,15 +425,6 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             for k in notes_moi:
                 if notes_moi[k]['ligne'] != 'GB':
                     notes_moi[k]['note'] = max(0, notes_moi[k]['note'] - 0.5)
-        elif bonus_adv == 'chapron':
-            meilleur_nom = None
-            meilleur_note = -1
-            for k, v in notes_adv.items():
-                if v['ligne'] != 'GB' and v['note'] > meilleur_note:
-                    meilleur_note = v['note']
-                    meilleur_nom = k
-            if meilleur_nom:
-                notes_moi[meilleur_nom]['note'] = 2.5
 
         def moy_ligne(notes, ligne):
             vals = [v['note'] for v in notes.values() if v['ligne'] == ligne]
