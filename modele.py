@@ -288,6 +288,8 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
     ):
         regularite = 0.0
 
+    titu_pct = pd.to_numeric(row.get('%Titu', 0), errors='coerce')
+
     return {
         'nom': row['Joueur'],
         'poste': poste,
@@ -295,6 +297,7 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         'buts': buts_par_match,
         'proba_but': proba_but,
         'regularite': regularite,
+        'titu': 0.0 if pd.isna(titu_pct) else float(titu_pct),
         'alerte': alerte_blessure(row, cols_journees)
     }
 
