@@ -289,6 +289,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         (df_mercato['Cote_pct'] >= 0.85) &
         (df_mercato['Note_pct'] >= 0.75) &
         (df_mercato['%Titu'] >= 60) &
+        (df_mercato['Tension'] != "Très peu demandé") &
         ~mask_eviter
     )
     # Pépites calculé avant Valeurs sûres : en cas de chevauchement (joueur cher-moyen
