@@ -482,8 +482,16 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
         # Buts réels : loi de Poisson (0, 1, 2+ buts possibles), pas un tirage
         # plafonné à 0/1 qui devenait une certitude dès que buts_par_match > 1.
         # Plusieurs buts réels comptent bien plusieurs fois dans le score (règle MPG).
-        score_moi = sum(int(np.random.poisson(v['buts'])) for v in notes_moi.values() if v['buts'] > 0)
-        score_adv = sum(int(np.random.poisson(v['buts'])) for v in notes_adv.values() if v['buts'] > 0)
+        # Le tirage est conservé PAR JOUEUR (buts_reels_moi/adv) : le mécanisme du
+        # but MPG virtuel plus bas doit exclure un joueur seulement s'IL a réellement
+        # marqué dans CETTE simulation précise, pas simplement parce que son taux
+        # moyen de buts/match (j['buts']) est non nul.
+        buts_reels_moi = {nom: int(np.random.poisson(v['buts'])) if v['buts'] > 0 else 0
+                          for nom, v in notes_moi.items()}
+        buts_reels_adv = {nom: int(np.random.poisson(v['buts'])) if v['buts'] > 0 else 0
+                          for nom, v in notes_adv.items()}
+        score_moi = sum(buts_reels_moi.values())
+        score_adv = sum(buts_reels_adv.values())
 
         if note_gb_moi >= 8:
             score_adv = max(0, score_adv - 1)
@@ -491,7 +499,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             score_moi = max(0, score_moi - 1)
 
         for nom, j in notes_moi.items():
-            if j['note'] < 5.5 or j['buts'] > 0:
+            if j['note'] < 5.5 or buts_reels_moi[nom] > 0:
                 continue
             note_c = j['note']
             if j['ligne'] == 'ATT':
@@ -514,7 +522,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                 score_moi += 1
 
         for nom, j in notes_adv.items():
-            if j['note'] < 5.5 or j['buts'] > 0:
+            if j['note'] < 5.5 or buts_reels_adv[nom] > 0:
                 continue
             note_c = j['note']
             if j['ligne'] == 'ATT':
