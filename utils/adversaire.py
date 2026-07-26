@@ -5,6 +5,34 @@ from modele import (get_joueur_info, poste_vers_ligne,
                     monte_carlo_match, get_stats_joueur_mc, calculer_contexte_ligue)
 from utils.table_style import inject_style, pill, escape, separateur
 
+def _joueur_vers_mc(j, ligne, df, cols_journees):
+    """Convertit un joueur (dict issu de get_joueur_info, avec 'nom'/'note_pred'/'buts')
+    au format attendu par monte_carlo_match : moyenne/écart-type calculés sur ses
+    vraies notes de la saison si suffisamment de matchs (>=3), sinon repli sur la
+    note prédite (note_pred) et l'estimation de buts déjà calculée par ailleurs."""
+    row = df[df['Joueur'].str.lower() == j['nom'].lower()]
+    if len(row) > 0:
+        row = row.iloc[0]
+        notes = [row[col] for col in cols_journees if row[col] > 0]
+        if len(notes) >= 3:
+            buts = pd.to_numeric(row.get('Buts', 0), errors='coerce')
+            matchs = len(notes)
+            buts_par_match = buts / matchs if matchs > 0 and not pd.isna(buts) else 0
+            return {
+                'nom': j['nom'],
+                'ligne': ligne,
+                'moyenne': float(np.mean(notes)),
+                'ecart_type': float(np.std(notes)),
+                'buts': float(buts_par_match)
+            }
+    return {
+        'nom': j['nom'],
+        'ligne': ligne,
+        'moyenne': j['note_pred'] or 5.0,
+        'ecart_type': 1.0,
+        'buts': j['buts']
+    }
+
 liste_bonus = [
     "💼 Valise à Nanard — annule 1 but adverse",
     "🪞 Miroir — retourne le bonus adverse",
@@ -140,6 +168,34 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 key="adv_joueurs"
             )
 
+    noms_mes_titu = [n.strip() for n in mes_titu.split('\n') if n.strip()]
+    noms_mes_rempl = [n.strip() for n in mes_remplacants.split('\n') if n.strip()]
+
+    with st.expander("Configurer les remplacements"):
+        if not noms_mes_titu:
+            st.caption("Renseignez d'abord vos titulaires ci-dessus.")
+        elif not noms_mes_rempl:
+            st.caption("Renseignez d'abord vos remplaçants ci-dessus.")
+        else:
+            nb_regles_remplacement = st.number_input(
+                "Nombre de remplacements à configurer",
+                min_value=0, max_value=len(noms_mes_titu), value=0, step=1,
+                key="nb_regles_remplacement"
+            )
+            for i in range(int(nb_regles_remplacement)):
+                st.markdown(f"**Remplacement {i + 1}**")
+                rc1, rc2, rc3 = st.columns(3)
+                with rc1:
+                    st.selectbox("Titulaire", noms_mes_titu, key=f"rempl_titu_{i}")
+                with rc2:
+                    st.number_input(
+                        "Seuil de note (remplacement si en dessous)",
+                        min_value=0.0, max_value=10.0, value=5.0, step=0.5,
+                        key=f"rempl_seuil_{i}"
+                    )
+                with rc3:
+                    st.selectbox("Remplaçant", noms_mes_rempl, key=f"rempl_nom_{i}")
+
     separateur("CONFIGURATION DES BONUS")
     col_b1, col_b2 = st.columns(2)
 
@@ -235,33 +291,36 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             joueurs_mc = []
             for ligne, joueurs in equipe.items():
                 for j in joueurs:
-                    row = df[df['Joueur'].str.lower() == j['nom'].lower()]
-                    if len(row) > 0:
-                        row = row.iloc[0]
-                        notes = [row[col] for col in cols_journees if row[col] > 0]
-                        if len(notes) >= 3:
-                            buts = pd.to_numeric(row.get('Buts', 0), errors='coerce')
-                            matchs = len(notes)
-                            buts_par_match = buts / matchs if matchs > 0 and not pd.isna(buts) else 0
-                            joueurs_mc.append({
-                                'nom': j['nom'],
-                                'ligne': ligne,
-                                'moyenne': float(np.mean(notes)),
-                                'ecart_type': float(np.std(notes)),
-                                'buts': float(buts_par_match)
-                            })
-                            continue
-                    joueurs_mc.append({
-                        'nom': j['nom'],
-                        'ligne': ligne,
-                        'moyenne': j['note_pred'] or 5.0,
-                        'ecart_type': 1.0,
-                        'buts': j['buts']
-                    })
+                    joueurs_mc.append(_joueur_vers_mc(j, ligne, df, cols_journees))
             return joueurs_mc
 
         joueurs_moi_mc = equipe_vers_mc(equipe_moi)
         joueurs_adv_mc = equipe_vers_mc(equipe_adv)
+
+        # Remplacements configurés (mon équipe uniquement) : convertit chaque
+        # règle (titulaire, seuil, remplaçant) en infos exploitables par
+        # monte_carlo_match, en réutilisant get_joueur_info pour le remplaçant
+        # (même logique de prédiction/repli que pour un titulaire).
+        regles_remplacement_mc = []
+        nb_regles_remplacement = st.session_state.get("nb_regles_remplacement", 0)
+        for i in range(int(nb_regles_remplacement)):
+            nom_titu_regle = st.session_state.get(f"rempl_titu_{i}")
+            seuil_regle = st.session_state.get(f"rempl_seuil_{i}")
+            nom_rempl_regle = st.session_state.get(f"rempl_nom_{i}")
+            if not (nom_titu_regle and nom_rempl_regle and seuil_regle is not None):
+                continue
+            info_rempl = get_joueur_info(
+                nom_rempl_regle, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
+                moyennes_lignes, notes_mediane_poste, buts_mediane_poste
+            )
+            if not info_rempl:
+                continue
+            ligne_rempl = poste_vers_ligne(info_rempl['poste'])
+            regles_remplacement_mc.append({
+                'titulaire': nom_titu_regle,
+                'seuil': float(seuil_regle),
+                'remplacant': _joueur_vers_mc(info_rempl, ligne_rempl, df, cols_journees)
+            })
 
         bonus_adv_key = bonus_key_map.get(bonus_adv_restant, None)
 
@@ -269,6 +328,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         with st.spinner("Simulation en cours (2000 scénarios)..."):
             res_sb = monte_carlo_match(
                 joueurs_moi_mc, joueurs_adv_mc,
+                regles_remplacement=regles_remplacement_mc,
                 n_simulations=2000,
                 domicile=domicile
             )
@@ -332,6 +392,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                         n_simulations=200,
                         bonus_moi=bonus_key,
                         bonus_adv=bonus_adv_key,
+                        regles_remplacement=regles_remplacement_mc,
                         domicile=domicile,
                         joueur_uber=joueur_uber
                     )

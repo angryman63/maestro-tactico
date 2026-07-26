@@ -373,26 +373,62 @@ def simuler_proba_but(moyenne, ecart_type, poste, moyennes_lignes, n_simulations
     return float(np.mean(reussite))
 
 
+def bonus_dispositif_def(nb_defenseurs):
+    """Bonus MPG lié au dispositif tactique : une défense à 4 (4-4-2, 4-3-3...)
+    donne +0,5 à chaque défenseur titulaire au coup d'envoi, une défense à 5
+    (5-3-2, 5-4-1...) donne +1. Moins de 4 défenseurs : pas de bonus."""
+    if nb_defenseurs >= 5:
+        return 1.0
+    if nb_defenseurs == 4:
+        return 0.5
+    return 0.0
+
+
 def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                       bonus_moi=None, bonus_adv=None,
-                      domicile=True, joueur_uber=None):
+                      domicile=True, joueur_uber=None,
+                      regles_remplacement=None):
     victoires = 0
     nuls = 0
     defaites = 0
     scores_moi = []
     scores_adv = []
 
+    # Dispositif tactique : déduit du nombre de défenseurs (ligne 'DEF') dans
+    # la compo TITULAIRE de départ, fixe pour tout le match (indépendant des
+    # remplacements déclenchés en cours de simulation ci-dessous).
+    bonus_def_moi = bonus_dispositif_def(sum(1 for j in joueurs_moi if j['ligne'] == 'DEF'))
+    bonus_def_adv = bonus_dispositif_def(sum(1 for j in joueurs_adv if j['ligne'] == 'DEF'))
+
+    # Remplacements configurés par l'utilisateur (mon équipe uniquement) :
+    # {nom du titulaire -> {'seuil': ..., 'remplacant': {'nom','ligne','moyenne','ecart_type','buts'}}}
+    regles_par_titulaire = {r['titulaire']: r for r in (regles_remplacement or [])}
+
     for _ in range(n_simulations):
         notes_moi = {}
         for j in joueurs_moi:
             note = np.random.normal(j['moyenne'], j['ecart_type'])
             note = max(0, min(10, note))
-            notes_moi[j['nom']] = {'note': note, 'ligne': j['ligne'], 'buts': j['buts']}
+            ligne, buts = j['ligne'], j['buts']
+
+            regle = regles_par_titulaire.get(j['nom'])
+            if regle and note < regle['seuil']:
+                rempl = regle['remplacant']
+                note = np.random.normal(rempl['moyenne'], rempl['ecart_type'])
+                note = max(0, min(10, note))
+                ligne, buts = rempl['ligne'], rempl['buts']
+
+            if ligne == 'DEF':
+                note = min(10, note + bonus_def_moi)
+
+            notes_moi[j['nom']] = {'note': note, 'ligne': ligne, 'buts': buts}
 
         notes_adv = {}
         for j in joueurs_adv:
             note = np.random.normal(j['moyenne'], j['ecart_type'])
             note = max(0, min(10, note))
+            if j['ligne'] == 'DEF':
+                note = min(10, note + bonus_def_adv)
             notes_adv[j['nom']] = {'note': note, 'ligne': j['ligne'], 'buts': j['buts']}
 
         if bonus_moi == 'zahia':
