@@ -248,13 +248,26 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
     if matchs > 0 and not pd.isna(buts_moy):
         buts_par_match = buts_moy / matchs
     else:
-        # Avant le 1er match de la saison : repli sur la MÉDIANE (pas la moyenne)
-        # de buts/match des joueurs du même poste — la distribution est très
-        # asymétrique (ex. la plupart des défenseurs ne marquent jamais, une
-        # minorité aux coups de pied arrêtés tire la moyenne vers le haut).
-        buts_par_match = (
-            buts_mediane_poste.get(poste, 0) if buts_mediane_poste is not None else 0
+        # Avant le 1er match de la saison : d'abord le propre taux de but/match
+        # du JOUEUR en N-1 (row_n1, même correspondance fiable que pour la note
+        # hybride) — un titulaire confirmé qui marquait beaucoup en N-1 garde un
+        # repli élevé même sans historique cette saison, distinct d'un remplaçant.
+        # Seulement si aucun N-1 fiable (vraie recrue, homonyme ambigu) : repli
+        # sur la MÉDIANE (pas la moyenne) de buts/match des joueurs du même poste
+        # — la distribution est très asymétrique (la plupart des défenseurs ne
+        # marquent jamais, une minorité aux coups de pied arrêtés tire la moyenne
+        # vers le haut).
+        buts_n1 = pd.to_numeric(row_n1.get('Buts', 0), errors='coerce') if row_n1 is not None else None
+        matchs_n1 = (
+            compter_matchs(row_n1, cols_n1 if cols_n1 is not None else cols_journees)
+            if row_n1 is not None else 0
         )
+        if row_n1 is not None and matchs_n1 > 0 and not pd.isna(buts_n1):
+            buts_par_match = buts_n1 / matchs_n1
+        else:
+            buts_par_match = (
+                buts_mediane_poste.get(poste, 0) if buts_mediane_poste is not None else 0
+            )
 
     notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
     moyenne_notes = np.mean(notes_jouees) if notes_jouees else (note_pred if note_pred is not None else 5.0)
