@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from modele import (get_joueur_info, poste_vers_ligne,
-                    monte_carlo_match, get_stats_joueur_mc)
+                    monte_carlo_match, get_stats_joueur_mc, calculer_contexte_ligue)
 from utils.table_style import inject_style, pill, escape, separateur
 
 liste_bonus = [
@@ -28,15 +28,19 @@ bonus_key_map = {
     "Aucun": None,
 }
 
-def meilleure_compo(noms_joueurs, df, cols_journees, strategie):
+def meilleure_compo(noms_joueurs, df, cols_journees, strategie, df_n1, cols_n1, journee_actuelle,
+                     moyennes_lignes, notes_mediane_poste):
     joueurs_info = []
     for nom in [n.strip() for n in noms_joueurs.split('\n') if n.strip()]:
-        info = get_joueur_info(nom, df, cols_journees)
+        info = get_joueur_info(
+            nom, df, cols_journees, df_n1, cols_n1, journee_actuelle,
+            moyennes_lignes, notes_mediane_poste
+        )
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
 
     if strategie == "Offensive":
-        joueurs_info.sort(key=lambda x: x['clutch_7'], reverse=True)
+        joueurs_info.sort(key=lambda x: x['proba_but'], reverse=True)
     elif strategie == "Défensive":
         joueurs_info.sort(key=lambda x: x['regularite'], reverse=True)
     else:
@@ -63,8 +67,9 @@ def _roster_html(equipe, extra_badge_fn=None):
             badges = ""
             if j.get('alerte'):
                 badges += pill(j['alerte'], 'bad')
-            if j.get('clutch_7') is not None:
-                badges += pill(f"Clutch {j['clutch_7']*100:.0f}%", 'mid')
+            if j.get('proba_but') is not None:
+                label = "Arrêt" if j.get('poste') == 'G' else "But"
+                badges += pill(f"Proba {label} {j['proba_but']*100:.0f}%", 'mid')
             if extra_badge_fn:
                 extra = extra_badge_fn(j)
                 if extra:
@@ -80,8 +85,10 @@ def _roster_html(equipe, extra_badge_fn=None):
     return f'<div class="gs-roster">{"".join(lignes_html)}</div>'
 
 
-def afficher_adversaire(df, cols_journees):
+def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
     inject_style()
+
+    moyennes_lignes, notes_mediane_poste = calculer_contexte_ligue(df, cols_journees)
 
     separateur("STRATÉGIE")
     strategie_jeu = st.radio(
@@ -189,7 +196,10 @@ def afficher_adversaire(df, cols_journees):
             titu_info = []
             non_trouves = []
             for nom in [n.strip() for n in noms_titu.split('\n') if n.strip()]:
-                info = get_joueur_info(nom, df, cols_journees)
+                info = get_joueur_info(
+                    nom, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
+                    moyennes_lignes, notes_mediane_poste
+                )
                 if info:
                     titu_info.append(info)
                 else:
@@ -211,7 +221,9 @@ def afficher_adversaire(df, cols_journees):
                 equipe_adv[poste_vers_ligne(j['poste'])].append(j)
         else:
             equipe_adv, _ = meilleure_compo(
-                adv_joueurs, df, cols_journees, strategie_jeu
+                adv_joueurs, df, cols_journees, strategie_jeu,
+                df_n1, cols_journees_n1, journee_actuelle,
+                moyennes_lignes, notes_mediane_poste
             )
 
         # Alertes joueurs non trouvés
@@ -292,16 +304,16 @@ def afficher_adversaire(df, cols_journees):
             for j in joueurs:
                 if j['note_pred'] is not None:
                     if strategie_jeu == "Offensive":
-                        score_cap = j['clutch_7']*0.6 + (j['note_pred']/10)*0.4
+                        score_cap = j['proba_but']*0.6 + (j['note_pred']/10)*0.4
                     elif strategie_jeu == "Défensive":
                         score_cap = j['regularite']*0.6 + (j['note_pred']/10)*0.4
                     else:
-                        score_cap = (j['note_pred']/10)*0.5 + j['regularite']*0.3 + j['clutch_7']*0.2
+                        score_cap = (j['note_pred']/10)*0.5 + j['regularite']*0.3 + j['proba_but']*0.2
                     candidats_cap.append((j['nom'], j['poste'], j['note_pred'], score_cap))
 
         if equipe_moi.get('GB') and equipe_moi['GB']:
             gb = equipe_moi['GB'][0]
-            if gb.get('clutch_8', 0) >= 0.10 and strategie_jeu == "Défensive":
+            if gb.get('proba_but', 0) >= 0.10 and strategie_jeu == "Défensive":
                 candidats_cap.append((gb['nom'], 'G', gb['note_pred'], 999))
 
         if candidats_cap:

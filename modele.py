@@ -196,33 +196,77 @@ def etiquette_regularite(valeur, q25, q50, q75, note_saison=None, note_mediane_p
         return "Irrégulier"
     return label
 
-def get_joueur_info(nom_joueur, df, cols_journees):
+def poste_vers_ligne(poste):
+    mapping = {'G': 'GB', 'DC': 'DEF', 'DL': 'DEF', 'MD': 'MIL', 'MO': 'MIL', 'A': 'ATT'}
+    return mapping.get(poste, 'MIL')
+
+def calculer_contexte_ligue(df, cols_journees):
+    """Précalcule, une fois pour tout le dataframe chargé, les moyennes de ligne
+    (ATT/MIL/DEF/GB) et la note saison médiane par poste. Contexte réutilisé par
+    get_joueur_info() pour ProbaBut/ProbaArret (simuler_proba_but) et pour le
+    plancher de qualité de la régularité (même principe que etiquette_regularite) :
+    évite de recalculer ces agrégats à chaque appel individuel."""
+    moyennes_par_ligne = {'ATT': [], 'MIL': [], 'DEF': [], 'GB': []}
+    notes_par_poste = {}
+    for _, row in df.iterrows():
+        notes = [row[c] for c in cols_journees if row[c] > 0]
+        poste = row.get('Poste', 'MO')
+        if notes:
+            moyennes_par_ligne[poste_vers_ligne(poste)].append(np.mean(notes))
+        note_saison = pd.to_numeric(row.get('Note', None), errors='coerce')
+        if not pd.isna(note_saison):
+            notes_par_poste.setdefault(poste, []).append(note_saison)
+
+    moyennes_lignes = {ligne: (np.mean(vals) if vals else 5.0) for ligne, vals in moyennes_par_ligne.items()}
+    notes_mediane_poste = {poste: np.median(vals) for poste, vals in notes_par_poste.items()}
+    return moyennes_lignes, notes_mediane_poste
+
+def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, journee_actuelle=999,
+                     moyennes_lignes=None, notes_mediane_poste=None):
     row = df[df['Joueur'].str.lower() == nom_joueur.strip().lower()]
     if len(row) == 0:
         return None
     row = row.iloc[0]
-    note_pred = predire_note(row, cols_journees)
+    poste = row.get('Poste', 'MO')
+
+    row_n1 = trouver_historique_n1(row['Joueur'], poste, df_n1) if df_n1 is not None else None
+    note_pred, _ = predire_note_hybride(
+        row_n1, cols_n1 if cols_n1 is not None else cols_journees,
+        row, cols_journees, journee_actuelle
+    )
+
     buts_moy = pd.to_numeric(row.get('Buts', 0), errors='coerce')
     matchs = compter_matchs(row, cols_journees)
     buts_par_match = (buts_moy / matchs) if matchs > 0 and not pd.isna(buts_moy) else 0
-    clutch_7 = calculer_clutch(row, cols_journees, seuil=7)
-    clutch_8 = calculer_clutch(row, cols_journees, seuil=8)
+
     notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
-    regularite = 1 / (1 + np.std(notes_jouees)) if notes_jouees else 0
+    moyenne_notes = np.mean(notes_jouees) if notes_jouees else (note_pred if note_pred is not None else 5.0)
+    ecart_type_notes = np.std(notes_jouees) if notes_jouees else 0.0
+    proba_but = (
+        simuler_proba_but(moyenne_notes, ecart_type_notes, poste, moyennes_lignes)
+        if moyennes_lignes is not None else 0.0
+    )
+
+    # Régularité : même plancher de qualité relatif au poste que etiquette_regularite()
+    # (modele.py) — un joueur constamment médiocre (Note saison sous la médiane de son
+    # poste) ne peut pas être considéré "régulier", quelle que soit sa faible variance.
+    regularite = 1 / (1 + ecart_type_notes) if notes_jouees else 0
+    note_saison = pd.to_numeric(row.get('Note', None), errors='coerce')
+    if (
+        notes_mediane_poste is not None and poste in notes_mediane_poste
+        and not pd.isna(note_saison) and note_saison < notes_mediane_poste[poste]
+    ):
+        regularite = 0.0
+
     return {
         'nom': row['Joueur'],
-        'poste': row.get('Poste', 'MO'),
+        'poste': poste,
         'note_pred': note_pred,
         'buts': buts_par_match,
-        'clutch_7': clutch_7,
-        'clutch_8': clutch_8,
+        'proba_but': proba_but,
         'regularite': regularite,
         'alerte': alerte_blessure(row, cols_journees)
     }
-
-def poste_vers_ligne(poste):
-    mapping = {'G': 'GB', 'DC': 'DEF', 'DL': 'DEF', 'MD': 'MIL', 'MO': 'MIL', 'A': 'ATT'}
-    return mapping.get(poste, 'MIL')
 
 def simuler_buts_mpg(equipe_att, equipe_def, domicile=True):
     buts_mpg = []
@@ -384,10 +428,11 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=500,
         moy_att_moi = moy_ligne(notes_moi, 'ATT')
         note_gb_moi = next((v['note'] for v in notes_moi.values() if v['ligne'] == 'GB'), 5.0)
 
-        score_moi = sum(1 for v in notes_moi.values()
-                        if v['buts'] > 0 and np.random.random() < v['buts'])
-        score_adv = sum(1 for v in notes_adv.values()
-                        if v['buts'] > 0 and np.random.random() < v['buts'])
+        # Buts réels : loi de Poisson (0, 1, 2+ buts possibles), pas un tirage
+        # plafonné à 0/1 qui devenait une certitude dès que buts_par_match > 1.
+        # Plusieurs buts réels comptent bien plusieurs fois dans le score (règle MPG).
+        score_moi = sum(int(np.random.poisson(v['buts'])) for v in notes_moi.values() if v['buts'] > 0)
+        score_adv = sum(int(np.random.poisson(v['buts'])) for v in notes_adv.values() if v['buts'] > 0)
 
         if note_gb_moi >= 8:
             score_adv = max(0, score_adv - 1)
