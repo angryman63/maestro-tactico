@@ -378,4 +378,4 @@ with page2:
     afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle)
 
 with page3:
-    afficher_adversaire(df, cols_journees)
+    afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle)
