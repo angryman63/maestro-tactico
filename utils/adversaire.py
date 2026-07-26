@@ -54,6 +54,15 @@ bonus_key_map = {
     "Aucun": None,
 }
 
+# Critère de stratégie (en plus de %Titu) utilisé par meilleure_compo() pour
+# reconstituer une compo adverse plausible.
+CRITERE_STRATEGIE_COMPO = {
+    "Offensive": 'proba_but',
+    "Défensive": 'regularite',
+    "Équilibrée": 'note_pred',
+}
+
+
 def meilleure_compo(noms_joueurs, df, cols_journees, strategie, df_n1, cols_n1, journee_actuelle,
                      moyennes_lignes, notes_mediane_poste, buts_mediane_poste):
     joueurs_info = []
@@ -65,12 +74,21 @@ def meilleure_compo(noms_joueurs, df, cols_journees, strategie, df_n1, cols_n1, 
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
 
-    if strategie == "Offensive":
-        joueurs_info.sort(key=lambda x: x['proba_but'], reverse=True)
-    elif strategie == "Défensive":
-        joueurs_info.sort(key=lambda x: x['regularite'], reverse=True)
-    else:
-        joueurs_info.sort(key=lambda x: x['note_pred'] or 0, reverse=True)
+    # Score combiné = 0.75 × %Titu_percentile(par poste) + 0.25 × critère_percentile
+    # (par poste) — même méthode de normalisation en rang percentile par poste que
+    # le reste de Mercato (utils/mercato.py : groupby('Poste')...rank(pct=True)),
+    # plutôt qu'un tri brut sur un seul critère : un joueur très titulaire mais
+    # avec de très mauvaises stats peut ainsi être dépassé par un joueur un peu
+    # moins titulaire mais nettement meilleur sur le critère de la stratégie choisie.
+    if joueurs_info:
+        critere_col = CRITERE_STRATEGIE_COMPO.get(strategie, 'note_pred')
+        df_pool = pd.DataFrame(joueurs_info)
+        df_pool['titu_pct'] = df_pool.groupby('poste')['titu'].rank(pct=True)
+        df_pool['critere_pct'] = df_pool.groupby('poste')[critere_col].rank(pct=True)
+        scores = 0.75 * df_pool['titu_pct'] + 0.25 * df_pool['critere_pct']
+        for info, score in zip(joueurs_info, scores):
+            info['score_compo'] = float(score)
+        joueurs_info.sort(key=lambda x: x['score_compo'], reverse=True)
 
     equipe = {'GB': [], 'DEF': [], 'MIL': [], 'ATT': []}
     limites = {'GB': 1, 'DEF': 4, 'MIL': 4, 'ATT': 2}
@@ -166,6 +184,10 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 "Joueurs adverses disponibles (un par ligne)",
                 height=400,
                 key="adv_joueurs"
+            )
+            st.caption(
+                "La compo adverse est reconstituée automatiquement à partir de cette liste "
+                "(%Titu + critère de la stratégie choisie) — une estimation, pas une certitude."
             )
 
     noms_mes_titu = [n.strip() for n in mes_titu.split('\n') if n.strip()]
