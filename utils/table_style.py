@@ -340,6 +340,9 @@ h3#bonus-adverses,
     font-weight: 600;
     white-space: nowrap;
 }
+.gs-pill[title] {
+    cursor: help;
+}
 .gs-pill-bad        { background-color: #3d1f1f; color: #ff6b6b; }
 .gs-pill-warn       { background-color: #3a2a12; color: #e8a33d; }
 .gs-pill-good       { background-color: #1e3a24; color: #6fd18c; }
@@ -463,9 +466,10 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
     color: #c8a84b;
     font-family: 'Oswald', sans-serif;
     font-weight: 700;
-    width: 48px;
+    min-width: 48px;
     text-align: right;
     flex-shrink: 0;
+    white-space: nowrap;
 }
 </style>
 """
@@ -483,9 +487,11 @@ def separateur(titre):
 
 def escape(val):
     return _html.escape(str(val))
-def pill(text, kind='mid'):
-    """kind: bad | warn | good | good-dark | mid | info"""
-    return f'<span class="gs-pill gs-pill-{kind}">{escape(text)}</span>'
+def pill(text, kind='mid', title=None):
+    """kind: bad | warn | good | good-dark | mid | info
+    title: texte d'info-bulle optionnel (attribut HTML title, tooltip natif au survol)."""
+    title_attr = f' title="{escape(title)}"' if title else ''
+    return f'<span class="gs-pill gs-pill-{kind}"{title_attr}>{escape(text)}</span>'
 def dash(symbol='—'):
     return f'<span class="gs-dash">{symbol}</span>'
 def name_cell(val):
