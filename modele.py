@@ -413,6 +413,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             note = np.random.normal(j['moyenne'], j['ecart_type'])
             note = max(0, min(10, note))
             ligne, buts = j['ligne'], j['buts']
+            substitue = False
 
             regle = regles_par_titulaire.get(j['nom'])
             if regle and note < regle['seuil']:
@@ -420,11 +421,12 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                 note = np.random.normal(rempl['moyenne'], rempl['ecart_type'])
                 note = max(0, min(10, note))
                 ligne, buts = rempl['ligne'], rempl['buts']
+                substitue = True
 
             if ligne == 'DEF':
                 note = min(10, note + bonus_def_moi)
 
-            notes_moi[j['nom']] = {'note': note, 'ligne': ligne, 'buts': buts}
+            notes_moi[j['nom']] = {'note': note, 'ligne': ligne, 'buts': buts, 'substitue': substitue}
 
         notes_adv = {}
         for j in joueurs_adv:
@@ -435,8 +437,10 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             notes_adv[j['nom']] = {'note': note, 'ligne': j['ligne'], 'buts': j['buts']}
 
         if bonus_moi == 'zahia':
+            # Règle confirmée : les joueurs entrants (remplacement déclenché cette
+            # simulation) n'ont pas le bonus Zahia, réservé aux vrais titulaires.
             for k in notes_moi:
-                if notes_moi[k]['ligne'] != 'GB':
+                if notes_moi[k]['ligne'] != 'GB' and not notes_moi[k]['substitue']:
                     notes_moi[k]['note'] = min(10, notes_moi[k]['note'] + 0.5)
         elif bonus_moi == 'suarez':
             for k in notes_adv:
@@ -447,9 +451,11 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                 if notes_adv[k]['ligne'] != 'GB':
                     notes_adv[k]['note'] = max(0, notes_adv[k]['note'] - 0.5)
         elif bonus_moi == 'uber_eats' and joueur_uber:
+            # Règle confirmée : si le joueur désigné a été remplacé cette simulation,
+            # le bonus est perdu pour cette simulation — pas transféré au remplaçant.
             nom_lower = joueur_uber.strip().lower()
             for k in notes_moi:
-                if k.lower() == nom_lower:
+                if k.lower() == nom_lower and not notes_moi[k]['substitue']:
                     notes_moi[k]['note'] = min(10, notes_moi[k]['note'] + 1)
 
         if bonus_adv == 'zahia':
