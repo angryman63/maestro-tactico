@@ -139,11 +139,11 @@ h3#equipe-adverse {
     color: #c8a84b !important;
 }
 
-/* ── Titres uniformisés : Bonus disponibles / Bonus adverses / Importance du match / Bonus adverse redouté ── */
+/* ── Titres uniformisés : Bonus disponibles / Bonus adverse / Importance du match ── */
 h3#bonus-disponibles,
-h3#bonus-adverses,
+h3#bonus-adverse,
 .st-key-importance label[data-testid="stWidgetLabel"] p,
-.st-key-bonus_adv_restant label[data-testid="stWidgetLabel"] p {
+.st-key-bonus_adv_estime label[data-testid="stWidgetLabel"] p {
     font-family: 'Oswald', sans-serif !important;
     font-weight: 700 !important;
     font-size: 0.95rem !important;
@@ -152,8 +152,8 @@ h3#bonus-adverses,
     color: #c8a84b !important;
 }
 
-/* ── Menu déroulant "Bonus adverse redouté" (Simuler le match) ── */
-.st-key-bonus_adv_restant input[role="combobox"] {
+/* ── Menu déroulant "Bonus adverse (estimé)" (Simuler le match) ── */
+.st-key-bonus_adv_estime input[role="combobox"] {
     font-family: 'Raleway', sans-serif !important;
 }
 
