@@ -390,7 +390,7 @@ def bonus_dispositif_def(nb_defenseurs):
 def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                       bonus_moi=None, bonus_adv=None,
                       domicile=True, joueur_uber=None,
-                      regles_remplacement=None):
+                      regles_remplacement=None, capitaine=None):
     victoires = 0
     nuls = 0
     defaites = 0
@@ -470,6 +470,12 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             for k in notes_moi:
                 if notes_moi[k]['ligne'] != 'GB':
                     notes_moi[k]['note'] = max(0, notes_moi[k]['note'] - 0.5)
+
+        # Bonus Capitaine (+0,5) : contrairement à Zahia/Uber Eats, il SUIT le
+        # joueur désigné même s'il devient remplaçant en cours de simulation —
+        # aucune exclusion sur le flag 'substitue' ici, volontairement.
+        if capitaine and capitaine in notes_moi:
+            notes_moi[capitaine]['note'] = min(10, notes_moi[capitaine]['note'] + 0.5)
 
         def moy_ligne(notes, ligne):
             vals = [v['note'] for v in notes.values() if v['ligne'] == ligne]

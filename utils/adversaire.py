@@ -218,6 +218,22 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 with rc3:
                     st.selectbox("Remplaçant", noms_mes_rempl, key=f"rempl_nom_{i}")
 
+    capitaine_designe = st.selectbox(
+        "Capitaine (bonus +0,5 — suit le joueur même s'il est remplacé en cours de simulation)",
+        ["Aucun"] + noms_mes_titu,
+        key="capitaine_designe"
+    )
+    capitaine_actif = capitaine_designe if capitaine_designe != "Aucun" else None
+
+    # Non-cumulable avec Uber Eats (règle confirmée) : si un capitaine est désigné,
+    # Uber Eats est retiré des bonus proposés. Si l'utilisateur avait déjà Uber Eats
+    # sélectionné, on retombe sur "Aucun" pour éviter une valeur de widget orpheline.
+    options_bonus_dispo = ["Aucun"] + liste_bonus
+    if capitaine_actif:
+        options_bonus_dispo = [b for b in options_bonus_dispo if "Uber Eats" not in b]
+        if st.session_state.get("mes_bonus_dispo") not in options_bonus_dispo:
+            st.session_state["mes_bonus_dispo"] = "Aucun"
+
     separateur("CONFIGURATION DES BONUS")
     col_b1, col_b2 = st.columns(2)
 
@@ -225,10 +241,15 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         st.subheader("Bonus disponibles")
         mes_bonus_dispo = st.selectbox(
             "Bonus disponibles",
-            ["Aucun"] + liste_bonus,
+            options_bonus_dispo,
             key="mes_bonus_dispo",
             label_visibility="collapsed"
         )
+        if capitaine_actif:
+            st.caption(
+                f"🍔 Uber Eats indisponible : non cumulable avec le bonus Capitaine "
+                f"({capitaine_actif})."
+            )
         joueur_uber = None
         if "Uber Eats" in mes_bonus_dispo:
             joueur_uber = st.text_input(
@@ -346,11 +367,12 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
 
         bonus_adv_key = bonus_key_map.get(bonus_adv_restant, None)
 
-        # Simulation sans bonus
+        # Simulation sans bonus (le Capitaine, structurel, reste actif même ici)
         with st.spinner("Simulation en cours (2000 scénarios)..."):
             res_sb = monte_carlo_match(
                 joueurs_moi_mc, joueurs_adv_mc,
                 regles_remplacement=regles_remplacement_mc,
+                capitaine=capitaine_actif,
                 n_simulations=2000,
                 domicile=domicile
             )
@@ -415,6 +437,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                         bonus_moi=bonus_key,
                         bonus_adv=bonus_adv_key,
                         regles_remplacement=regles_remplacement_mc,
+                        capitaine=capitaine_actif,
                         domicile=domicile,
                         joueur_uber=joueur_uber
                     )
