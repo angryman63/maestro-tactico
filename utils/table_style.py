@@ -11,7 +11,7 @@ div[data-testid="stRadio"] > div {
     border: 1px solid rgba(200, 168, 75, 0.35);
 }
 div[data-testid="stRadio"] label p {
-    color: #f5f5f5 !important;
+    color: #ffffff !important;
 }
 
 /* ── Sélecteurs en pilules or (Mercato + Simuler le match) ── */
@@ -101,7 +101,7 @@ div[data-testid="stRadio"] label p {
 .st-key-adv_rempl label[data-testid="stWidgetLabel"] p,
 .st-key-adv_joueurs label[data-testid="stWidgetLabel"] p {
     font-family: 'Raleway', sans-serif !important;
-    color: rgba(255, 255, 255, 0.75) !important;
+    color: #ffffff !important;
 }
 .st-key-mes_titu [data-testid="stTextAreaRootElement"],
 .st-key-mes_rempl [data-testid="stTextAreaRootElement"],
@@ -122,33 +122,29 @@ div[data-testid="stRadio"] label p {
     box-shadow: 0 0 0 2px rgba(200, 168, 75, 0.15);
 }
 
-/* ── Labels des groupes en pilules (Simuler le match) ── */
+/* ── Labels des champs à accent or (Simuler le match) : groupes en pilules + bonus adverse ── */
 .st-key-strategie_jeu label[data-testid="stWidgetLabel"] p,
 .st-key-mode_analyse label[data-testid="stWidgetLabel"] p,
-.st-key-domicile label[data-testid="stWidgetLabel"] p {
-    font-family: 'Raleway', sans-serif !important;
-    font-weight: 500 !important;
-    color: rgba(200, 168, 75, 0.85) !important;
-}
-
-/* ── Titres de section h3 (Simuler le match) : équipes ── */
-h3#mon-equipe,
-h3#equipe-adverse {
-    font-family: 'Oswald', sans-serif !important;
-    font-weight: 700 !important;
-    color: #c8a84b !important;
-}
-
-/* ── Titres uniformisés : Bonus disponibles / Bonus adverse / Importance du match ── */
-h3#bonus-disponibles,
-h3#bonus-adverse,
+.st-key-domicile label[data-testid="stWidgetLabel"] p,
 .st-key-importance label[data-testid="stWidgetLabel"] p,
 .st-key-bonus_adv_estime label[data-testid="stWidgetLabel"] p {
     font-family: 'Oswald', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    letter-spacing: 0.04em !important;
+    text-transform: none !important;
+    color: #c8a84b !important;
+}
+
+/* ── Sous-titres h3 (Simuler le match) : équipes + bonus disponibles ── */
+h3#mon-equipe,
+h3#equipe-adverse,
+h3#bonus-disponibles {
+    font-family: 'Oswald', sans-serif !important;
     font-weight: 700 !important;
-    font-size: 0.95rem !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
+    font-size: 1.05rem !important;
+    letter-spacing: 0.04em !important;
+    text-transform: none !important;
     color: #c8a84b !important;
 }
 
@@ -381,8 +377,9 @@ h3#bonus-adverse,
 }
 .gs-sep-label {
     font-family: 'Oswald', sans-serif;
-    font-size: 1.1rem;
-    letter-spacing: 0.22em;
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
     color: #c8a84b;
     white-space: nowrap;
     text-transform: uppercase;

@@ -267,7 +267,6 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         )
 
     with col_b2:
-        st.subheader("Bonus adverse")
         bonus_adv_estime = st.selectbox(
             "Bonus adverse (estimé)",
             ["Aucun"] + liste_bonus,

@@ -83,7 +83,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
 
 [data-testid="stCheckbox"] [data-testid="stMarkdownContainer"] p {
     font-family: 'Raleway', sans-serif !important;
-    color: #e8e8e8 !important;
+    color: #ffffff !important;
 }
 
 /* Topbar */
