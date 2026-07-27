@@ -474,7 +474,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 else:
                     st.success(f"**Gardez vos bonus** — Favori à {vic}%, bonus non indispensable !")
             elif vic >= 40:
-                if round(res_meilleur['victoires'] - vic, 1) >= 8:
+                if round(res_meilleur['victoires'] - vic, 1) >= 6:
                     st.warning(f"**Utilisez {nom_meilleur}** — Match serré ({vic}%), le bonus fait passer à {res_meilleur['victoires']}% !")
                 else:
                     st.warning(f"**Match très serré ({vic}%)** — Aucun bonus ne change significativement le résultat")
