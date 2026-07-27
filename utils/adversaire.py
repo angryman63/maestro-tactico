@@ -227,15 +227,6 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
     )
     capitaine_actif = capitaine_designe if capitaine_designe != "Aucun" else None
 
-    # Non-cumulable avec Uber Eats (règle confirmée) : si un capitaine est désigné,
-    # Uber Eats est retiré des bonus proposés. Si l'utilisateur avait déjà Uber Eats
-    # sélectionné, on retombe sur "Aucun" pour éviter une valeur de widget orpheline.
-    options_bonus_dispo = ["Aucun"] + liste_bonus
-    if capitaine_actif:
-        options_bonus_dispo = [b for b in options_bonus_dispo if "Uber Eats" not in b]
-        if st.session_state.get("mes_bonus_dispo") not in options_bonus_dispo:
-            st.session_state["mes_bonus_dispo"] = "Aucun"
-
     separateur("CONFIGURATION DES BONUS")
     col_b1, col_b2 = st.columns(2)
 
@@ -243,21 +234,31 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         st.subheader("Bonus disponibles")
         mes_bonus_dispo = st.selectbox(
             "Bonus disponibles",
-            options_bonus_dispo,
+            ["Aucun"] + liste_bonus,
             key="mes_bonus_dispo",
             label_visibility="collapsed"
         )
-        if capitaine_actif:
-            st.caption(
-                f"🍔 Uber Eats indisponible : non cumulable avec le bonus Capitaine "
-                f"({capitaine_actif})."
-            )
         joueur_uber = None
+        conflit_capitaine_uber = False
         if "Uber Eats" in mes_bonus_dispo:
             joueur_uber = st.text_input(
                 "Joueur boosté par Uber Eats :",
                 key="joueur_uber"
             )
+            # Règle réelle : Uber Eats et Capitaine ne peuvent pas cibler LE MÊME
+            # joueur (pas d'exclusion globale entre les deux bonus). Si conflit,
+            # Uber Eats est simplement ignoré pour ce joueur au moment de lancer
+            # la simulation — le Capitaine, lui, continue de s'appliquer.
+            conflit_capitaine_uber = bool(
+                capitaine_actif and joueur_uber
+                and joueur_uber.strip().lower() == capitaine_actif.strip().lower()
+            )
+            if conflit_capitaine_uber:
+                st.error(
+                    f"Uber Eats et Capitaine ne peuvent pas cibler le même joueur "
+                    f"({capitaine_actif}). Choisissez un autre joueur pour Uber Eats, "
+                    f"ou désignez un autre capitaine."
+                )
         importance_match = st.radio(
             "Importance du match",
             ["Crucial", "Normal", "Sans enjeu"],
@@ -266,17 +267,11 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         )
 
     with col_b2:
-        st.subheader("Bonus adverses")
-        bonus_adv_utilises = st.selectbox(
-            "Bonus adverses disponibles",
+        st.subheader("Bonus adverse")
+        bonus_adv_estime = st.selectbox(
+            "Bonus adverse (estimé)",
             ["Aucun"] + liste_bonus,
-            key="bonus_adv_utilises",
-            label_visibility="collapsed"
-        )
-        bonus_adv_restant = st.selectbox(
-            "Bonus adverse redouté",
-            ["Aucun"] + liste_bonus,
-            key="bonus_adv_restant"
+            key="bonus_adv_estime"
         )
 
     separateur("TERRAIN")
@@ -367,7 +362,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 'remplacant': _joueur_vers_mc(info_rempl, ligne_rempl, df, cols_journees)
             })
 
-        bonus_adv_key = bonus_key_map.get(bonus_adv_restant, None)
+        bonus_adv_key = bonus_key_map.get(bonus_adv_estime, None)
 
         # Simulation sans bonus (le Capitaine, structurel, reste actif même ici)
         with st.spinner("Simulation en cours (2000 scénarios)..."):
@@ -441,7 +436,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                         regles_remplacement=regles_remplacement_mc,
                         capitaine=capitaine_actif,
                         domicile=domicile,
-                        joueur_uber=joueur_uber
+                        joueur_uber=(None if conflit_capitaine_uber else joueur_uber)
                     )
                     resultats_bonus[bonus] = res_b
 
@@ -504,7 +499,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             else:
                 st.error(f"Très outsider ({vic}%) — Économisez vos bonus !")
 
-        if "Miroir" in bonus_adv_restant:
+        if "Miroir" in bonus_adv_estime:
             st.warning("**L'adversaire a le Miroir !** — Si vous utilisez un bonus, il peut le retourner contre vous !")
 
         separateur("DÉTAILS DES ÉQUIPES")
