@@ -107,13 +107,17 @@ def _roster_html(equipe, extra_badge_fn=None):
     lignes_html = []
     for ligne in ['GB', 'DEF', 'MIL', 'ATT']:
         for j in equipe.get(ligne, []):
-            note = f"{j['note_pred']:.2f}" if j['note_pred'] else "?"
+            note = f"{j['note_pred']:.2f}" if j['note_pred'] else "Données insuffisantes"
             badges = ""
             if j.get('alerte'):
                 badges += pill(j['alerte'], 'bad')
             if j.get('proba_but') is not None:
                 label = "Arrêt" if j.get('poste') == 'G' else "But"
-                badges += pill(f"Proba {label} {j['proba_but']*100:.0f}%", 'mid')
+                badges += pill(
+                    f"Proba {label} MPG {j['proba_but']*100:.0f}%", 'mid',
+                    title="Probabilité de but MPG virtuel (franchissement de lignes), "
+                          "pas une probabilité de but réel inscrit sur le terrain."
+                )
             if extra_badge_fn:
                 extra = extra_badge_fn(j)
                 if extra:
@@ -375,7 +379,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 domicile=domicile
             )
 
-        separateur("RÉSULTAT — 2000 SCÉNARIOS")
+        separateur("RÉSULTAT")
 
         col_s1, col_s2, col_s3 = st.columns([2, 1, 2])
 
@@ -475,7 +479,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 else:
                     st.success(f"**Gardez vos bonus** — Favori à {vic}%, bonus non indispensable !")
             elif vic >= 40:
-                if round(res_meilleur['victoires'] - vic, 1) >= 10:
+                if round(res_meilleur['victoires'] - vic, 1) >= 8:
                     st.warning(f"**Utilisez {nom_meilleur}** — Match serré ({vic}%), le bonus fait passer à {res_meilleur['victoires']}% !")
                 else:
                     st.warning(f"**Match très serré ({vic}%)** — Aucun bonus ne change significativement le résultat")
@@ -500,8 +504,6 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             else:
                 st.error(f"Très outsider ({vic}%) — Économisez vos bonus !")
 
-        if bonus_adv_restant != "Aucun":
-            st.info(f"L'adversaire dispose encore de : {bonus_adv_restant.split('—')[0].strip()} — Vérifiez sur MPGStats !")
         if "Miroir" in bonus_adv_restant:
             st.warning("**L'adversaire a le Miroir !** — Si vous utilisez un bonus, il peut le retourner contre vous !")
 
