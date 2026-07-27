@@ -169,13 +169,11 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         if "précise" in mode_analyse:
             adv_titu = st.text_area(
                 "Titulaires adverses (un par ligne)",
-                placeholder="Descamps\nChardonnet\nDiomandé\nGaniou\nUdol\nThomasson\nGboho\nAndré\nDoumbia\nSinayoko\nPagis",
                 height=250,
                 key="adv_titu"
             )
             adv_remplacants = st.text_area(
                 "Remplaçants adverses (un par ligne)",
-                placeholder="Safonov\nGradit\nSangaré\nLepaul",
                 height=150,
                 key="adv_rempl"
             )
