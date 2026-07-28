@@ -14,6 +14,41 @@ div[data-testid="stRadio"] label p {
     color: #ffffff !important;
 }
 
+/* ── Police par défaut : base site-wide — Raleway pour tout ce qui n'est pas
+   un titre/sous-titre de section (labels de champ, texte de contenu,
+   boutons, menus), Oswald réservé aux titres/sous-titres ── */
+[data-testid="stWidgetLabel"] p {
+    font-family: 'Raleway', sans-serif !important;
+}
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] span,
+[data-testid="stMarkdownContainer"] strong,
+[data-testid="stMarkdownContainer"] li {
+    font-family: 'Raleway', sans-serif !important;
+}
+[data-testid="stSelectbox"] input[role="combobox"],
+[data-testid="stTextArea"] textarea,
+[data-testid="stTextInput"] input,
+[data-testid="stNumberInput"] input {
+    font-family: 'Raleway', sans-serif !important;
+}
+div[data-testid="stButton"] button,
+div[data-testid="stButton"] button p {
+    font-family: 'Raleway', sans-serif !important;
+}
+/* Filet de sécurité : tout titre markdown ("### ...") passe par un wrapper
+   stHeadingWithActionElements avec un span interne qui hérite sinon de la
+   police par défaut de Streamlit malgré une règle posée sur le h1-h6 lui-même. */
+[data-testid="stHeadingWithActionElements"] h1,
+[data-testid="stHeadingWithActionElements"] h2,
+[data-testid="stHeadingWithActionElements"] h3,
+[data-testid="stHeadingWithActionElements"] h4,
+[data-testid="stHeadingWithActionElements"] span,
+[data-testid="stHeadingWithActionElements"] p {
+    font-family: 'Oswald', sans-serif !important;
+    font-weight: 700 !important;
+}
+
 /* ── Sélecteurs en pilules or (Mercato + Simuler le match) ── */
 .st-key-mercato_taille_ligue [data-testid="stRadioGroup"],
 .st-key-mercato_strategie [data-testid="stRadioGroup"],
@@ -167,6 +202,7 @@ h3#bonus-disponibles {
 
 /* ── Textes d'aide (st.caption) : plus petits et discrets que le texte courant ── */
 [data-testid="stCaptionContainer"] p {
+    font-family: 'Raleway', sans-serif !important;
     font-size: 0.8rem !important;
     color: rgba(255, 255, 255, 0.55) !important;
 }
@@ -220,6 +256,10 @@ h3#bonus-disponibles {
     height: 2px;
     border-radius: 2px;
     background-color: #c8a84b;
+}
+.st-key-mercato_postes > div > [role="tablist"] > [data-testid="stTab"] p,
+.st-key-hebdo_postes > div > [role="tablist"] > [data-testid="stTab"] p {
+    font-family: 'Oswald', sans-serif !important;
 }
 
 /* ── Sélecteur "Trier par" : texte en Raleway (valeur affichée + options du menu) ── */
@@ -345,11 +385,11 @@ h3#bonus-disponibles {
 .gs-table tbody tr:nth-child(even) { background-color: #202020; }
 .gs-table tbody tr:hover { background-color: #2a2412; }
 .gs-table .gs-name { color: #ffffff; font-weight: 600; }
-.gs-table .gs-pill { font-family: 'Inter', sans-serif; }
 .gs-pill {
     display: inline-block;
     padding: 2px 10px;
     border-radius: 12px;
+    font-family: 'Raleway', sans-serif;
     font-size: 0.92em;
     font-weight: 600;
     white-space: nowrap;
@@ -427,7 +467,7 @@ h3#bonus-disponibles {
 div[data-testid="stButton"] > button[kind="primary"] {
     background: linear-gradient(135deg, #c8a84b, #8a6f2e) !important;
     color: #0d0d0d !important;
-    font-family: 'Oswald', sans-serif !important;
+    font-family: 'Raleway', sans-serif !important;
     font-weight: 700 !important;
     font-size: 1rem !important;
     letter-spacing: 0.14em !important;
@@ -443,7 +483,7 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
 
 /* ── Bouton "Valider" (sidebar) — même typographie que le bouton de simulation ── */
 .st-key-btn_valider_joueurs button {
-    font-family: 'Oswald', sans-serif !important;
+    font-family: 'Raleway', sans-serif !important;
     font-weight: 700 !important;
     letter-spacing: 0.14em !important;
     text-transform: uppercase !important;
@@ -472,10 +512,16 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
     width: 42px;
     flex-shrink: 0;
 }
+.gs-roster-row .gs-roster-ligne {
+    font-family: 'Oswald', sans-serif !important;
+}
 .gs-roster-nom {
     color: #ffffff;
     font-weight: 600;
     flex-grow: 1;
+}
+.gs-roster-row .gs-roster-nom {
+    font-family: 'Raleway', sans-serif !important;
 }
 .gs-roster-note {
     color: #c8a84b;
@@ -485,6 +531,9 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
     text-align: right;
     flex-shrink: 0;
     white-space: nowrap;
+}
+.gs-roster-row .gs-roster-note {
+    font-family: 'Oswald', sans-serif !important;
 }
 </style>
 """

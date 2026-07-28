@@ -142,6 +142,10 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     background-color: #c8a84b;
 }
 
+.st-key-nav_tabs > div > [role="tablist"] > [data-testid="stTab"] p {
+    font-family: 'Oswald', sans-serif !important;
+}
+
 /* DataFrames */
 [data-testid="stDataFrame"] {
     background-color: #1a1a1a !important;
@@ -156,7 +160,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     font-weight: 700;
     border: none;
     border-radius: 6px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Raleway', sans-serif;
 }
 
 .stButton > button:hover {
@@ -341,7 +345,7 @@ with st.sidebar:
     filtrer = st.checkbox("Afficher uniquement mes joueurs", value=False)
     st.markdown("---")
     st.markdown(
-        "<div style='font-family:Inter,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); text-align:center;'>"
+        "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); text-align:center;'>"
         "maestrotactico.fr<br>contact@maestrotactico.fr"
         "</div>",
         unsafe_allow_html=True
