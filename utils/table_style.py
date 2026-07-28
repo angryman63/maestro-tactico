@@ -442,6 +442,14 @@ h3#bonus-disponibles {
     white-space: nowrap;
     text-transform: uppercase;
 }
+/* Priorité renforcée : le span .gs-sep-label est rendu à l'intérieur d'un
+   stMarkdownContainer (via st.markdown), donc la règle globale
+   [data-testid="stMarkdownContainer"] span (Raleway !important, plus
+   spécifique que .gs-sep-label seul) l'emporterait sinon sur ce
+   font-family Oswald. */
+.gs-sep .gs-sep-label {
+    font-family: 'Oswald', sans-serif !important;
+}
 
 /* ── Cards équipes ── */
 .gs-equipe-card {
