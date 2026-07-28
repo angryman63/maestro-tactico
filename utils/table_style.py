@@ -130,7 +130,7 @@ div[data-testid="stRadio"] label p {
 .st-key-bonus_adv_estime label[data-testid="stWidgetLabel"] p {
     font-family: 'Oswald', sans-serif !important;
     font-weight: 600 !important;
-    font-size: 0.85rem !important;
+    font-size: 1rem !important;
     letter-spacing: 0.04em !important;
     text-transform: none !important;
     color: #c8a84b !important;
@@ -142,15 +142,33 @@ h3#equipe-adverse,
 h3#bonus-disponibles {
     font-family: 'Oswald', sans-serif !important;
     font-weight: 700 !important;
-    font-size: 1.05rem !important;
+    font-size: 1rem !important;
     letter-spacing: 0.04em !important;
     text-transform: none !important;
     color: #c8a84b !important;
 }
 
+/* ── Sous-titres de niveau identique aux ci-dessus : Titulaires / Remplaçants /
+   Joueurs adverses disponibles / Capitaine (mêmes taille pour cohérence de
+   hiérarchie, couleur/police propres à chacun conservées) ── */
+.st-key-mes_titu label[data-testid="stWidgetLabel"] p,
+.st-key-mes_rempl label[data-testid="stWidgetLabel"] p,
+.st-key-adv_titu label[data-testid="stWidgetLabel"] p,
+.st-key-adv_rempl label[data-testid="stWidgetLabel"] p,
+.st-key-adv_joueurs label[data-testid="stWidgetLabel"] p,
+.st-key-capitaine_designe label[data-testid="stWidgetLabel"] p {
+    font-size: 1rem !important;
+}
+
 /* ── Menu déroulant "Bonus adverse (estimé)" (Simuler le match) ── */
 .st-key-bonus_adv_estime input[role="combobox"] {
     font-family: 'Raleway', sans-serif !important;
+}
+
+/* ── Textes d'aide (st.caption) : plus petits et discrets que le texte courant ── */
+[data-testid="stCaptionContainer"] p {
+    font-size: 0.8rem !important;
+    color: rgba(255, 255, 255, 0.55) !important;
 }
 
 /* ── Onglets de poste (Mercato + Conseiller Hebdo) : Attaquants / Milieux / ... ── */
@@ -221,7 +239,7 @@ h3#bonus-disponibles {
     background-color: rgba(200, 168, 75, 0.18) !important;
 }
 [role="listbox"] [role="option"][aria-selected="true"] [data-item-hl] {
-    color: #c8a84b !important;
+    color: #ffffff !important;
 }
 [class*="st-key-tri_col_"] label[data-testid="stWidgetLabel"] p {
     font-family: 'Oswald', sans-serif !important;
