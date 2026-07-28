@@ -183,16 +183,18 @@ h3#bonus-disponibles {
     color: #c8a84b !important;
 }
 
-/* ── Sous-titres de niveau identique aux ci-dessus : Titulaires / Remplaçants /
-   Joueurs adverses disponibles / Capitaine (mêmes taille pour cohérence de
-   hiérarchie, couleur/police propres à chacun conservées) ── */
+/* ── Labels de champ (Simuler le match) : Titulaires / Remplaçants /
+   Joueurs adverses disponibles / Capitaine — niveau "label de champ",
+   clairement en dessous des sous-titres h3 (1rem) et des bandeaux dorés
+   (1.35rem), aligné sur la taille par défaut des autres labels de champ
+   du site (Titulaire/Remplaçant/Seuil de note/Nombre de remplacements). ── */
 .st-key-mes_titu label[data-testid="stWidgetLabel"] p,
 .st-key-mes_rempl label[data-testid="stWidgetLabel"] p,
 .st-key-adv_titu label[data-testid="stWidgetLabel"] p,
 .st-key-adv_rempl label[data-testid="stWidgetLabel"] p,
 .st-key-adv_joueurs label[data-testid="stWidgetLabel"] p,
 .st-key-capitaine_designe label[data-testid="stWidgetLabel"] p {
-    font-size: 1rem !important;
+    font-size: 0.875rem !important;
 }
 
 /* ── Menu déroulant "Bonus adverse (estimé)" (Simuler le match) ── */
