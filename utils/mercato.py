@@ -4,7 +4,7 @@ import numpy as np
 from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
-    taux_regularite,
+    taux_regularite, stabiliser_note_saison,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -145,7 +145,7 @@ def calculer_score_mercato(row, strategie):
     prop = PROPORTIONS_RESTANT[strategie]
 
     proba = row['ProbaBut_norm'] * 10
-    note = row['Note']
+    note = row['NoteStabilisee']
     variation_residu = row['Variation_residu_norm'] * 10
     titu = row['%Titu'] / 100 * 10
     achat_t1 = row['AchatT1_norm'] * 10
@@ -212,6 +212,25 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         lambda row: alerte_blessure(row, cols_journees), axis=1)
     df_mercato['Ratio'] = df_mercato['Note'] / df_mercato['Cote']  # gardée pour affichage éventuel, plus utilisée dans les scores
 
+    # Note stabilisée (point 9) : la Note brute d'un joueur à 1-2 matchs joués
+    # cette saison n'est pas fiable (un seul bon match suffit à la faire
+    # décoller) — on la mélange avec sa Note de saison N-1 selon la même
+    # grille progressive (poids_phase) que predire_note_hybride(), mais
+    # appliquée à la moyenne de saison plutôt qu'à la prédiction pondérée
+    # récente de predire_note() : ça stabilise les petits échantillons sans
+    # jamais réintroduire de biais de forme récente (Mercato n'utilise
+    # volontairement pas de Forme 6J). Utilisée uniquement dans les formules
+    # de score/percentile ci-dessous ; la colonne 'Note' affichée reste la
+    # vraie moyenne de saison brute.
+    df_mercato['NoteStabilisee'] = df.apply(
+        lambda row: stabiliser_note_saison(
+            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1),
+            row, cols_journees, journee_actuelle
+        ),
+        axis=1
+    )
+    df_mercato['NoteStabilisee'] = df_mercato['NoteStabilisee'].fillna(df_mercato['Note'])
+
     stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
     df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
     df_mercato['EcartTypeNote'] = stats_notes['EcartTypeNote']
@@ -226,7 +245,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # --- Rangs percentile Cote/Note par poste (réutilisés par "À éviter" et par les
     # seuils de catégorie plus bas) ---
     df_mercato['Cote_pct'] = df_mercato.groupby('Poste')['Cote'].rank(pct=True)
-    df_mercato['Note_pct'] = df_mercato.groupby('Poste')['Note'].rank(pct=True)
+    df_mercato['Note_pct'] = df_mercato.groupby('Poste')['NoteStabilisee'].rank(pct=True)
 
     # À éviter — seuil relatif au poste (pas de seuil de Cote universel) : cher pour
     # SON poste (au-delà du 60e percentile) ET décevant pour SON poste (sous la
@@ -254,7 +273,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # --- Variation_residu (point 4) : résidu de Variation ~ Note + Cote ---
     X = np.column_stack([
         np.ones(len(df_mercato)),
-        df_mercato['Note'].to_numpy(dtype=float),
+        df_mercato['NoteStabilisee'].to_numpy(dtype=float),
         df_mercato['Cote'].to_numpy(dtype=float),
     ])
     y = df_mercato['Variation'].to_numpy(dtype=float)

@@ -66,17 +66,22 @@ def alerte_blessure(row, cols_journees):
             return f"🐢 Retour ({absences} matchs)"
     return ""
 
-def poids_phase(matchs_joues_joueur, journee_calendaire_actuelle):
+def poids_phase(matchs_joues_joueur, journee_calendaire_actuelle, plafond_calendaire=True):
     """Retourne (poids_saison_n1, poids_saison_actuelle) selon DEUX critères :
     - la position du JOUEUR dans la grille progressive, déterminée par le
       nombre de matchs qu'IL a déjà joués cette saison (et non la journée
       calendaire), pour ne pas pénaliser/avantager à tort un joueur qui a
       manqué des matchs (blessure, retard de transfert, etc.) ;
-    - un plafond calendaire dur : au-delà de la journée 8 (journée > 8),
-      la pondération N-1 est TOUJOURS nulle, quel que soit le nombre de
-      matchs du joueur — même s'il s'agit littéralement de son 1er match
-      de la saison, joué tardivement."""
-    if journee_calendaire_actuelle > 8:
+    - un plafond calendaire dur (si plafond_calendaire=True, le comportement
+      par défaut, utilisé par predire_note_hybride pour la prédiction de
+      forme) : au-delà de la journée 8 (journée > 8), la pondération N-1 est
+      TOUJOURS nulle, quel que soit le nombre de matchs du joueur — même
+      s'il s'agit littéralement de son 1er match de la saison, joué
+      tardivement. plafond_calendaire=False désactive ce plafond (utile pour
+      stabiliser un agrégat de saison comme la Note Mercato, où un joueur à
+      1-2 matchs reste un petit échantillon à stabiliser quelle que soit la
+      journée calendaire, contrairement à une prédiction de forme hebdomadaire)."""
+    if plafond_calendaire and journee_calendaire_actuelle > 8:
         return (0.0, 1.0)
     grille = {
         0: (1.0, 0.0),  # aucun match joué -> comme au tout début (grille J1)
@@ -130,6 +135,51 @@ def predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_a
 
     note = round(poids_n1 * note_n1 + poids_actuelle * note_actuelle, 2)
     return note, f"{int(poids_n1 * 100)}%N-1/{int(poids_actuelle * 100)}%actuelle"
+
+def stabiliser_note_saison(row_n1, row_actuelle, cols_actuelle, journee_actuelle):
+    """Stabilise la colonne 'Note' de saison brute (moyenne simple sur tous les
+    matchs joués, PAS la version pondérée récente de predire_note()) pour les
+    petits échantillons, en la mélangeant avec la Note de saison N-1 du joueur.
+
+    Réutilise la même grille progressive que predire_note_hybride() (poids_phase,
+    basée sur le nombre de matchs déjà joués par CE joueur), mais SANS son
+    plafond calendaire à J8 (plafond_calendaire=False) : ce plafond a été conçu
+    pour une prédiction de forme hebdomadaire (un débutant tardif ne doit plus
+    profiter de son N-1, périmé, une fois la saison bien entamée), alors qu'ici
+    on stabilise un agrégat de saison pour un score de classement — un joueur
+    à 1-2 matchs reste un petit échantillon à stabiliser quelle que soit la
+    journée calendaire. Appliquée à la moyenne de saison brute plutôt qu'à
+    predire_note() (pondération récente sur les 6 derniers matchs) :
+    predire_note_hybride() ne converge jamais vers la Note brute de saison
+    même une fois le joueur installé (il reste construit sur les 6 derniers
+    matchs, un tout autre signal, cf. "Forme 6J" de Conseiller Hebdo), alors
+    qu'ici on veut au contraire retrouver EXACTEMENT la Note de saison brute
+    une fois assez de matchs joués, sans jamais introduire de biais de forme
+    récente (Mercato n'utilise volontairement pas de Forme 6J)."""
+    matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
+    poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
+
+    def _note_brute(row):
+        if row is None:
+            return None
+        note = pd.to_numeric(row.get('Note', None), errors='coerce')
+        return None if pd.isna(note) else float(note)
+
+    note_actuelle = _note_brute(row_actuelle)
+    note_n1 = _note_brute(row_n1)
+
+    if poids_n1 > 0 and note_n1 is None:
+        poids_n1, poids_actuelle = 0.0, 1.0
+    if poids_actuelle > 0 and note_actuelle is None:
+        poids_n1, poids_actuelle = 1.0, 0.0
+
+    if poids_actuelle == 1.0:
+        return note_actuelle
+    if poids_n1 == 1.0:
+        return note_n1
+    if note_actuelle is None and note_n1 is None:
+        return None
+    return round(poids_n1 * note_n1 + poids_actuelle * note_actuelle, 2)
 
 def get_prediction_complete(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle):
     """
