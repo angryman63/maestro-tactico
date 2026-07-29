@@ -15,7 +15,11 @@ def afficher_accueil():
     font-family: "Oswald", sans-serif; font-size: 16px; font-weight: 700;
     color: #ffffff; line-height: 1.1; margin: 0 0 16px 0;
 }
-.hero-title span { color: #c8a84b; }
+.hero-wrap .hero-title span {
+    color: #c8a84b;
+    font-family: "Oswald", sans-serif !important;
+    font-weight: 700 !important;
+}
 .hero-subtitle {
     font-family: "Raleway", sans-serif; font-size: 16px; color: #aaaaaa;
     line-height: 1.7; margin: 0 auto 12px auto; text-align: center;
