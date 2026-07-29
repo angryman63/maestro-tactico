@@ -222,10 +222,21 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # volontairement pas de Forme 6J). Utilisée uniquement dans les formules
     # de score/percentile ci-dessous ; la colonne 'Note' affichée reste la
     # vraie moyenne de saison brute.
+    #
+    # Le repli poste (médiane de Note, calculé sur les joueurs à échantillon
+    # fiable — >= 3 matchs cette saison) sert aussi de garde-fou côté N-1 :
+    # si l'historique N-1 d'un joueur repose lui-même sur peu de matchs, il
+    # est mélangé à ce repli plutôt que transféré tel quel (cf. docstring de
+    # stabiliser_note_saison).
+    df_fiable_note = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
+    note_mediane_poste = df_fiable_note.groupby('Poste')['Note'].median().to_dict()
+    note_repli_global = df_fiable_note['Note'].median()
+
     df_mercato['NoteStabilisee'] = df.apply(
         lambda row: stabiliser_note_saison(
-            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1),
-            row, cols_journees, journee_actuelle
+            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
+            row, cols_journees, journee_actuelle,
+            note_mediane_poste.get(row['Poste'], note_repli_global)
         ),
         axis=1
     )
