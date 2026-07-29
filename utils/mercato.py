@@ -4,7 +4,7 @@ import numpy as np
 from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
-    taux_regularite, stabiliser_note_saison,
+    taux_regularite, stabiliser_note_saison, stabiliser_ecart_type_saison,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -239,6 +239,28 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         axis=1
     )
 
+    # Écart-type stabilisé (même principe que NoteStabilisee) : un joueur à 1-2
+    # matchs joués a un écart-type quasi nul (variance nulle sur un seul
+    # échantillon), ce qui resserre artificiellement sa distribution simulée
+    # et gonfle son ProbaBut à des valeurs irréalistes (souvent 100%/0%). Le
+    # repli (écart-type médian du poste) est calculé sur les seuls joueurs à
+    # échantillon fiable (>= 3 matchs), pour ne pas être lui-même biaisé par
+    # les petits échantillons qu'il est censé corriger.
+    ecart_type_mediane_poste = (
+        df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
+        .groupby('Poste')['EcartTypeNote'].median()
+        .to_dict()
+    )
+    ecart_type_repli_global = df_mercato.loc[df_mercato['Matchs_joues'] >= 3, 'EcartTypeNote'].median()
+    df_mercato['EcartTypeStabilise'] = df.apply(
+        lambda row: stabiliser_ecart_type_saison(
+            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
+            row, cols_journees, journee_actuelle,
+            ecart_type_mediane_poste.get(row['Poste'], ecart_type_repli_global)
+        ),
+        axis=1
+    )
+
     # --- Tension du marché (à partir du % achat T1) ---
     df_mercato['Tension'] = df_mercato['AchatT1'].apply(_tension)
 
@@ -265,7 +287,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
 
     df_mercato['ProbaBut'] = df_mercato.apply(
         lambda row: simuler_proba_but(
-            row['MoyenneNote'], row['EcartTypeNote'], row['Poste'], moyennes_lignes
+            row['MoyenneNote'], row['EcartTypeStabilise'], row['Poste'], moyennes_lignes
         ),
         axis=1
     )
