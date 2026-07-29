@@ -136,7 +136,8 @@ def predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_a
     note = round(poids_n1 * note_n1 + poids_actuelle * note_actuelle, 2)
     return note, f"{int(poids_n1 * 100)}%N-1/{int(poids_actuelle * 100)}%actuelle"
 
-def stabiliser_note_saison(row_n1, row_actuelle, cols_actuelle, journee_actuelle):
+def stabiliser_note_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle,
+                            note_repli_poste=None):
     """Stabilise la colonne 'Note' de saison brute (moyenne simple sur tous les
     matchs joués, PAS la version pondérée récente de predire_note()) pour les
     petits échantillons, en la mélangeant avec la Note de saison N-1 du joueur.
@@ -155,7 +156,17 @@ def stabiliser_note_saison(row_n1, row_actuelle, cols_actuelle, journee_actuelle
     matchs, un tout autre signal, cf. "Forme 6J" de Conseiller Hebdo), alors
     qu'ici on veut au contraire retrouver EXACTEMENT la Note de saison brute
     une fois assez de matchs joués, sans jamais introduire de biais de forme
-    récente (Mercato n'utilise volontairement pas de Forme 6J)."""
+    récente (Mercato n'utilise volontairement pas de Forme 6J).
+
+    Fiabilité à double sens : un historique N-1 trouvé (row_n1 non None) mais
+    lui-même bâti sur peu de matchs (ex. joueur qui a très peu joué la saison
+    dernière aussi) n'est pas transféré tel quel — sa propre Note N-1 est
+    d'abord mélangée avec note_repli_poste (médiane du poste, calculée par
+    l'appelant sur les joueurs à échantillon fiable) selon la même grille
+    poids_phase(), positionnée cette fois par le nombre de matchs N-1
+    disponibles plutôt que par la saison en cours. Sans quoi le problème de
+    petit échantillon réapparaîtrait à l'identique, simplement transféré sur
+    les données N-1 au lieu des données actuelles."""
     matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
     poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
 
@@ -167,6 +178,12 @@ def stabiliser_note_saison(row_n1, row_actuelle, cols_actuelle, journee_actuelle
 
     note_actuelle = _note_brute(row_actuelle)
     note_n1 = _note_brute(row_n1)
+
+    if note_n1 is not None and note_repli_poste is not None:
+        matchs_n1 = compter_matchs(row_n1, cols_n1) if cols_n1 else 0
+        poids_repli_n1, poids_propre_n1 = poids_phase(matchs_n1, journee_actuelle, plafond_calendaire=False)
+        if poids_repli_n1 > 0:
+            note_n1 = poids_repli_n1 * note_repli_poste + poids_propre_n1 * note_n1
 
     if poids_n1 > 0 and note_n1 is None:
         poids_n1, poids_actuelle = 0.0, 1.0
@@ -198,7 +215,14 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
     juste une variance élargie autour — il est presque entièrement recentré
     sur un profil de référence crédible (N-1 ou moyenne/écart-type du poste),
     la seule façon d'éviter un ProbaBut extrême (proche de 0% ou 100%) basé
-    sur un échantillon d'un seul match."""
+    sur un échantillon d'un seul match.
+
+    Fiabilité à double sens : si l'historique N-1 trouvé (row_n1 non None)
+    repose lui-même sur peu de matchs, moyenne_n1/ecart_type_n1 sont à leur
+    tour mélangés avec moyenne_repli/ecart_type_repli selon la même grille
+    poids_phase(), positionnée cette fois par le nombre de matchs N-1
+    disponibles — sinon le problème de petit échantillon réapparaîtrait à
+    l'identique, simplement transféré sur les données N-1."""
     matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
     poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
 
@@ -207,8 +231,10 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
     ecart_type_actuelle = float(np.std(notes_actuelle)) if notes_actuelle else 0.0
 
     moyenne_n1, ecart_type_n1 = None, None
+    matchs_n1 = 0
     if row_n1 is not None:
         notes_n1 = [row_n1[col] for col in cols_n1 if row_n1[col] > 0]
+        matchs_n1 = len(notes_n1)
         if notes_n1:
             moyenne_n1 = float(np.mean(notes_n1))
             ecart_type_n1 = float(np.std(notes_n1))
@@ -216,6 +242,11 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
         moyenne_n1 = moyenne_repli
     if ecart_type_n1 is None:
         ecart_type_n1 = ecart_type_repli
+    if matchs_n1 > 0:
+        poids_repli_n1, poids_propre_n1 = poids_phase(matchs_n1, journee_actuelle, plafond_calendaire=False)
+        if poids_repli_n1 > 0:
+            moyenne_n1 = poids_repli_n1 * moyenne_repli + poids_propre_n1 * moyenne_n1
+            ecart_type_n1 = poids_repli_n1 * ecart_type_repli + poids_propre_n1 * ecart_type_n1
 
     if poids_n1 == 1.0:
         return moyenne_n1, ecart_type_n1
