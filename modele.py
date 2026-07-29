@@ -181,6 +181,44 @@ def stabiliser_note_saison(row_n1, row_actuelle, cols_actuelle, journee_actuelle
         return None
     return round(poids_n1 * note_n1 + poids_actuelle * note_actuelle, 2)
 
+def stabiliser_ecart_type_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle,
+                                  ecart_type_repli):
+    """Stabilise l'écart-type de notes utilisé par simuler_proba_but() (tirage
+    Monte Carlo de ProbaBut/ProbaArret) pour les petits échantillons — même
+    principe que stabiliser_note_saison() : mélange l'écart-type de la saison
+    en cours avec celui de la saison N-1 du joueur, mêmes poids progressifs
+    poids_phase() (sans plafond calendaire), même correspondance N-1
+    (trouver_historique_n1, appelée par l'appelant). Un joueur à 1 seul match
+    joué cette saison a un écart-type quasi nul (une seule note = variance
+    nulle), ce qui rend sa distribution simulée artificiellement étroite et
+    gonfle son ProbaBut à des valeurs irréalistes (souvent 100% ou 0%) — le
+    mélange avec un écart-type réel restaure une variabilité crédible.
+
+    Si le joueur n'a aucun historique N-1 fiable (recrue, homonyme ambigu),
+    ecart_type_repli (l'écart-type médian du poste, calculé par l'appelant
+    sur les joueurs à échantillon fiable) est utilisé à la place de
+    l'écart-type N-1 manquant — plutôt que de retomber sur un écart-type
+    quasi nul, qui ne réglerait rien."""
+    matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
+    poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
+
+    notes_actuelle = [row_actuelle[col] for col in cols_actuelle if row_actuelle[col] > 0] if row_actuelle is not None else []
+    ecart_type_actuelle = float(np.std(notes_actuelle)) if notes_actuelle else 0.0
+
+    ecart_type_n1 = None
+    if row_n1 is not None:
+        notes_n1 = [row_n1[col] for col in cols_n1 if row_n1[col] > 0]
+        if notes_n1:
+            ecart_type_n1 = float(np.std(notes_n1))
+    if ecart_type_n1 is None:
+        ecart_type_n1 = ecart_type_repli
+
+    if poids_n1 == 1.0:
+        return ecart_type_n1
+    if poids_actuelle == 1.0:
+        return ecart_type_actuelle
+    return poids_n1 * ecart_type_n1 + poids_actuelle * ecart_type_actuelle
+
 def get_prediction_complete(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle):
     """
     Assemble predire_note_hybride() (la note pondérée) et alerte_blessure()
