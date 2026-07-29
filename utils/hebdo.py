@@ -2,11 +2,10 @@ import unicodedata
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 from modele import (
     nettoyer_note, calculer_clutch, predire_note, alerte_blessure, etiquette_regularite,
     absences_consecutives, predire_note_hybride, get_bandeau_avertissement, trouver_historique_n1,
-    compter_matchs, poids_phase,
+    compter_matchs, poids_phase, taux_regularite,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -132,8 +131,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             continue
 
         notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
-        six_derniers = notes_jouees[:6]
-        regularite_brute = 1 / (1 + np.std(six_derniers)) if six_derniers else 0
+        regularite_brute = taux_regularite(notes_jouees)
         prob_jouer = row['%Titu'] / 100 if '%Titu' in df.columns else 0.8
         moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
 

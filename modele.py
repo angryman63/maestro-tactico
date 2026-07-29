@@ -171,6 +171,21 @@ def trouver_historique_n1(nom_joueur, poste, df_n1):
         return correspondances.iloc[0]
     return None
 
+def taux_regularite(notes_jouees, n_matchs=6):
+    """Taux de fiabilité basé sur le "flop" : proportion des n_matchs derniers
+    matchs joués (notes_jouees déjà trié du plus récent au plus ancien, comme
+    cols_journees) où la note est en dessous de 5.0, quel que soit le poste
+    (les médianes de note par poste sont assez proches — 4,87 à 5,34 — pour ne
+    pas justifier un seuil différencié). Remplace l'ancienne variance brute
+    (1/(1+écart-type)) : un joueur irrégulier au sens statistique mais qui ne
+    "floppe" jamais (ex. alterne 6/10 et 8/10) n'est pas vraiment un problème
+    de fiabilité, contrairement à un joueur qui multiplie les notes < 5.0."""
+    six_derniers = notes_jouees[:n_matchs]
+    if not six_derniers:
+        return 0.0
+    nb_flops = sum(1 for note in six_derniers if note < 5.0)
+    return 1 - (nb_flops / len(six_derniers))
+
 def etiquette_regularite(valeur, q25, q50, q75, note_saison=None, note_mediane_poste=None):
     """Classe la régularité brute (1/(1+écart-type), aveugle au niveau) en quartiles
     par poste. Un joueur ne peut accéder à "Métronome" ou "Régulier" que si sa
@@ -277,10 +292,11 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         if moyennes_lignes is not None else 0.0
     )
 
-    # Régularité : même plancher de qualité relatif au poste que etiquette_regularite()
-    # (modele.py) — un joueur constamment médiocre (Note saison sous la médiane de son
-    # poste) ne peut pas être considéré "régulier", quelle que soit sa faible variance.
-    regularite = 1 / (1 + ecart_type_notes) if notes_jouees else 0
+    # Régularité : taux de fiabilité basé sur le "flop" (taux_regularite), même
+    # plancher de qualité relatif au poste que etiquette_regularite() (modele.py)
+    # — un joueur constamment médiocre (Note saison sous la médiane de son
+    # poste) ne peut pas être considéré "régulier", quel que soit son taux de flop.
+    regularite = taux_regularite(notes_jouees)
     note_saison = pd.to_numeric(row.get('Note', None), errors='coerce')
     if (
         notes_mediane_poste is not None and poste in notes_mediane_poste

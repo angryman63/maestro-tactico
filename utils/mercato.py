@@ -4,6 +4,7 @@ import numpy as np
 from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
+    taux_regularite,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -214,7 +215,10 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
     df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
     df_mercato['EcartTypeNote'] = stats_notes['EcartTypeNote']
-    df_mercato['Regularite'] = 1 / (1 + df_mercato['EcartTypeNote'])
+    df_mercato['Regularite'] = df.apply(
+        lambda row: taux_regularite([row[col] for col in cols_journees if row[col] > 0]),
+        axis=1
+    )
 
     # --- Tension du marché (à partir du % achat T1) ---
     df_mercato['Tension'] = df_mercato['AchatT1'].apply(_tension)
