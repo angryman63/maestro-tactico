@@ -86,7 +86,11 @@ def _pill_demande(val):
     if 'Très demandé' in val:
         return pill(val, 'info')
     if 'Très peu demandé' in val:
-        return pill(val, 'bad')
+        # Gris neutre plutôt que rouge : la plupart des joueurs de rotation
+        # tombent naturellement ici (surtout depuis la suppression du plafond
+        # d'affichage) — ce n'est pas une alerte, juste une demande faible.
+        # Le rouge ('bad') reste réservé aux vraies alertes (À éviter, blessures).
+        return pill(val, 'neutral')
     if 'Demandé' in val:
         return pill(val, 'good')
     if 'Peu demandé' in val:
