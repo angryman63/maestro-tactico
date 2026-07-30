@@ -405,6 +405,7 @@ h3#bonus-disponibles {
 .gs-pill-good-dark  { background-color: #0d2414; color: #3da85e; }
 .gs-pill-mid        { background-color: #2a2a2a; color: #c8a84b; }
 .gs-pill-info       { background-color: #14262e; color: #6ec6d9; }
+.gs-pill-neutral    { background-color: #262626; color: #8a8a8a; }
 .gs-page-title {
     font-family: 'Oswald', sans-serif;
     font-weight: 700;
@@ -562,7 +563,7 @@ def separateur(titre):
 def escape(val):
     return _html.escape(str(val))
 def pill(text, kind='mid', title=None):
-    """kind: bad | warn | good | good-dark | mid | info
+    """kind: bad | warn | good | good-dark | mid | info | neutral
     title: texte d'info-bulle optionnel (attribut HTML title, tooltip natif au survol)."""
     title_attr = f' title="{escape(title)}"' if title else ''
     return f'<span class="gs-pill gs-pill-{kind}"{title_attr}>{escape(text)}</span>'
