@@ -311,13 +311,24 @@ def taux_regularite(notes_jouees, n_matchs=6):
     nb_flops = sum(1 for note in six_derniers if note < 5.0)
     return 1 - (nb_flops / len(six_derniers))
 
-def etiquette_regularite(valeur, q25, q50, q75, note_saison=None, note_mediane_poste=None):
+_SEUILS_TITU_REGULARITE = {"Métronome": 70, "Régulier": 50}
+
+
+def etiquette_regularite(valeur, q25, q50, q75, note_saison=None, note_mediane_poste=None, titu_pct=None):
     """Classe la régularité brute (1/(1+écart-type), aveugle au niveau) en quartiles
     par poste. Un joueur ne peut accéder à "Métronome" ou "Régulier" que si sa
     Note_saison est aussi au-dessus de la médiane de son poste — sans ce plancher
     de qualité, un joueur constamment médiocre mais très peu variable (ex. toujours
     ~4/10) serait autrement classé "Métronome" à tort. En dessous du plancher, il
-    est reclassé en "Irrégulier" (le calcul de la variance elle-même est inchangé)."""
+    est reclassé en "Irrégulier" (le calcul de la variance elle-même est inchangé).
+
+    Second plancher, sur le %Titu cette fois : un joueur quasiment jamais titulaire
+    (ex. 0% de titularisation) peut malgré tout avoir un taux de flop très bas sur
+    ses rares apparitions, et se retrouver "Métronome" à tort alors qu'il n'a pas
+    l'échantillon de titularisations qui justifierait cette étiquette de fiabilité.
+    Métronome exige %Titu >= 70 (titulaire quasi indiscutable), Régulier exige
+    %Titu >= 50 — en dessous, reclassé en "Irrégulier" quel que soit le taux de
+    flop calculé."""
     if valeur >= q75:
         label = "Métronome"
     elif valeur >= q50:
@@ -334,6 +345,14 @@ def etiquette_regularite(valeur, q25, q50, q75, note_saison=None, note_mediane_p
         and note_saison < note_mediane_poste
     ):
         return "Irrégulier"
+
+    if (
+        label in _SEUILS_TITU_REGULARITE
+        and titu_pct is not None
+        and titu_pct < _SEUILS_TITU_REGULARITE[label]
+    ):
+        return "Irrégulier"
+
     return label
 
 def poste_vers_ligne(poste):
