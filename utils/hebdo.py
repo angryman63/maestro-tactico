@@ -1,11 +1,9 @@
-import unicodedata
-
 import streamlit as st
 import pandas as pd
 from modele import (
     nettoyer_note, calculer_clutch, predire_note, alerte_blessure, etiquette_regularite,
     absences_consecutives, predire_note_hybride, get_bandeau_avertissement, trouver_historique_n1,
-    compter_matchs, poids_phase, taux_regularite,
+    compter_matchs, poids_phase, taux_regularite, normaliser_accents,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -27,15 +25,6 @@ def _rang_regularite(val):
     return 0
 
 
-def _normaliser_accents(texte):
-    """Retire les accents pour une comparaison alphabétique correcte (sans quoi
-    'É', 'À'... se comparent par leur code Unicode et finissent après 'Z')."""
-    return ''.join(
-        c for c in unicodedata.normalize('NFKD', str(texte))
-        if not unicodedata.combining(c)
-    )
-
-
 def _cle_tri(df, colonne):
     """Retourne une Series servant de clé de tri numérique (ou textuelle
     normalisée) pour la colonne donnée, sans modifier les données affichées."""
@@ -44,7 +33,7 @@ def _cle_tri(df, colonne):
     if colonne == '% Titulaire':
         return df[colonne].astype(str).str.rstrip('%').astype(float)
     if colonne == 'Joueur':
-        return df[colonne].apply(_normaliser_accents)
+        return df[colonne].apply(normaliser_accents)
     return df[colonne]
 
 
