@@ -413,6 +413,16 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # un joueur "à éviter" n'apparaît nulle part ailleurs).
     mask_equilibre = ~mask_stars & ~mask_valeurs & ~mask_pepites & ~mask_eviter
 
+    # Étiquette de catégorie par joueur (les 5 masques sont mutuellement exclusifs,
+    # cf. plus haut) — utilisée par la recherche globale ci-dessous pour indiquer
+    # dans quelle stratégie chaque résultat apparaît, sans dépendre de l'onglet
+    # actuellement sélectionné.
+    df_mercato['Categorie'] = np.select(
+        [mask_stars, mask_valeurs, mask_pepites, mask_eviter, mask_equilibre],
+        ['Stars', 'Valeurs sûres', 'Pépites', 'À éviter', 'Équilibre'],
+        default='?'
+    )
+
     df_stars = df_mercato[mask_stars].copy()
     df_valeurs = df_mercato[mask_valeurs].copy()
     df_pepites = df_mercato[mask_pepites].copy()
@@ -431,7 +441,9 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     recherche_joueur = st.text_input(
         "🔎 Rechercher un joueur",
         key="mercato_recherche_joueur",
-        placeholder="Nom du joueur…"
+        placeholder="Nom du joueur…",
+        help="Recherche sur tous les postes et toutes les catégories (Stars/Valeurs sûres/"
+             "Équilibre/Pépites/À éviter) à la fois — inutile de changer d'onglet au préalable."
     ).strip()
 
     with st.expander("🏥 Légende blessures"):
@@ -454,19 +466,40 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         "Pépites": ('pepites', df_pepites),
     }
 
-    if strategie_choisie == "À éviter":
+    if recherche_joueur:
+        # Recherche globale (tous postes et toutes catégories confondus) : ne
+        # dépend ni de la stratégie ni de l'onglet poste sélectionné, pour que
+        # l'utilisateur n'ait pas à cliquer onglet par onglet pour retrouver un
+        # joueur précis. La colonne Catégorie indique où il apparaît réellement
+        # (un même nom peut correspondre à plusieurs joueurs différents, dans
+        # des catégories/postes distincts — chacun listé sur sa propre ligne).
+        resultats = df_mercato[
+            df_mercato['Joueur'].str.contains(recherche_joueur, case=False, na=False, regex=False)
+        ].copy()
+        if len(resultats) == 0:
+            st.info("Aucun joueur trouvé.")
+        else:
+            resultats['ProbaBut'] = resultats['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
+            st.markdown(
+                _table_html(
+                    resultats[['Joueur', 'Poste', 'Categorie', 'Cote', 'Enchere', 'Tension',
+                               'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte', 'ProbaBut']
+                               ].sort_values('Cote', ascending=False
+                               ).rename(columns={
+                                   'Enchere': 'Enchère moy.', 'Tension': 'Demande',
+                                   'Matchs_joues': 'Matchs joués', 'ProbaBut': 'Proba but/arrêt',
+                               }).reset_index(drop=True)
+                ),
+                unsafe_allow_html=True
+            )
+    elif strategie_choisie == "À éviter":
         st.markdown(
             '<div style="font-family:\'Oswald\',sans-serif; font-weight:700; '
             'font-size:1.05rem; letter-spacing:0.04em; text-transform:uppercase; '
             'color:#c8a84b; margin:0.4rem 0 0.8rem;">Joueurs chers mais décevants</div>',
             unsafe_allow_html=True
         )
-        df_eviter_affiche = df_eviter
-        if recherche_joueur:
-            df_eviter_affiche = df_eviter_affiche[
-                df_eviter_affiche['Joueur'].str.contains(recherche_joueur, case=False, na=False, regex=False)
-            ]
-        df_eviter_affiche = df_eviter_affiche.copy()
+        df_eviter_affiche = df_eviter.copy()
         df_eviter_affiche['Raison'] = df_eviter_affiche.apply(lambda row:
             "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
             else "Cher + note décevante", axis=1
@@ -490,14 +523,9 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         for tab, (code, nom) in zip(tabs, postes.items()):
             with tab:
                 df_poste = df_s[df_s['Poste'] == code]
-                if recherche_joueur:
-                    df_poste = df_poste[
-                        df_poste['Joueur'].str.contains(recherche_joueur, case=False, na=False, regex=False)
-                    ]
 
                 # Plus de plafond d'affichage (point 2) : la catégorie entière est
-                # montrée, triée par score — la barre de recherche ci-dessus permet
-                # de retrouver un joueur precis sans avoir a parcourir la liste.
+                # montrée, triée par score.
                 top = df_poste.sort_values(
                     f'Score_{strategie_key}', ascending=False
                 ).copy()
