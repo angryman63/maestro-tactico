@@ -322,7 +322,10 @@ journee_actuelle = determiner_journee_actuelle(df, cols_journees)
 # ============================================================
 
 with st.sidebar:
-    st.markdown("### Mes joueurs (un par ligne)")
+    st.markdown(
+        '### Mes joueurs <span style="font-size:0.6em; opacity:0.5;">(un par ligne)</span>',
+        unsafe_allow_html=True
+    )
 
     # Initialisation session state
     if "mes_joueurs_input" not in st.session_state:
@@ -338,11 +341,12 @@ with st.sidebar:
 
     if st.button("Valider", key="btn_valider_joueurs"):
         st.session_state["mes_joueurs_input"] = st.session_state["mes_joueurs_textarea"]
-        st.rerun()
     else:
         st.session_state["mes_joueurs_input"] = mes_joueurs_input
 
-    filtrer = st.checkbox("Afficher uniquement mes joueurs", value=False)
+    filtrer = st.checkbox(
+        "Afficher uniquement mes joueurs", value=False, key="filtrer_mes_joueurs"
+    )
     st.markdown("---")
     st.markdown(
         "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); text-align:center;'>"
