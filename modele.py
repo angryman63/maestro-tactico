@@ -1,5 +1,16 @@
+import unicodedata
+
 import pandas as pd
 import numpy as np
+
+def normaliser_accents(texte):
+    """Retire les accents pour une comparaison alphabétique/textuelle correcte
+    (sans quoi 'É', 'À'... se comparent par leur code Unicode et finissent
+    après 'Z', ou ne matchent pas un texte saisi sans accent)."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFKD', str(texte))
+        if not unicodedata.combining(c)
+    )
 
 def nettoyer_note(valeur):
     if pd.isna(valeur):

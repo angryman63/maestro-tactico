@@ -9,7 +9,10 @@ import time
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from modele import nettoyer_note, determiner_journee_actuelle
+from modele import (
+    nettoyer_note, determiner_journee_actuelle, normaliser_accents,
+    trouver_historique_n1, predire_note_hybride,
+)
 from utils.accueil import afficher_accueil
 from utils.hebdo import afficher_hebdo
 from utils.mercato import afficher_mercato
@@ -321,6 +324,48 @@ journee_actuelle = determiner_journee_actuelle(df, cols_journees)
 # SIDEBAR — MES JOUEURS
 # ============================================================
 
+def _verifier_noms_joueurs(lignes, df, df_n1, cols_journees, cols_journees_n1, journee_actuelle):
+    """Vérifie chaque ligne saisie dans "Mes joueurs" au clic sur Valider (pure
+    information, ne change rien à ce qui est affiché par le filtre) :
+    - aucune correspondance, même partielle -> introuvable ;
+    - correspondance seulement partielle (fragment) -> suggère les noms complets ;
+    - nom trouvé (un ou plusieurs homonymes) mais sans Forme 6J exploitable
+      (trop peu de matchs cette saison et pas d'historique N-1 fiable, même
+      logique que trouver_historique_n1/predire_note_hybride dans Hebdo) ->
+      signalé comme absent des recommandations ;
+    - nom trouvé et éligible -> confirmation discrète.
+    Un nom homonyme (plusieurs joueurs réels, ex. postes/clubs différents)
+    produit un message par joueur réel trouvé, pas un seul verdict global."""
+    noms_normalises = df['Joueur'].apply(lambda n: normaliser_accents(str(n)).lower().strip())
+    resultats = []
+    for ligne in lignes:
+        ligne_norm = normaliser_accents(ligne).lower().strip()
+        if not ligne_norm:
+            continue
+        lignes_exactes = df[noms_normalises == ligne_norm]
+
+        if len(lignes_exactes) == 0:
+            noms_fragments = df.loc[noms_normalises.str.contains(ligne_norm, regex=False), 'Joueur'].unique().tolist()
+            if noms_fragments:
+                suggestions = ', '.join(noms_fragments[:8])
+                if len(noms_fragments) > 8:
+                    suggestions += f", et {len(noms_fragments) - 8} autre(s)"
+                resultats.append(('warning', f"« {ligne} » ne correspond à aucun nom exact — vouliez-vous dire : {suggestions} ?"))
+            else:
+                resultats.append(('error', f"« {ligne} » introuvable dans les données (aucune correspondance, même partielle)."))
+            continue
+
+        for _, row in lignes_exactes.iterrows():
+            identifiant = f"{row['Joueur']} ({row['Poste']}, {row['Club']})"
+            row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+            note_forme, _ = predire_note_hybride(row_n1, cols_journees_n1, row, cols_journees, journee_actuelle)
+            if note_forme is None:
+                resultats.append(('info', f"{identifiant} trouvé mais pas encore assez de données cette saison pour apparaître dans les recommandations."))
+            else:
+                resultats.append(('success', f"{identifiant} trouvé et disponible dans les recommandations."))
+    return resultats
+
+
 with st.sidebar:
     st.markdown(
         '### Mes joueurs <span style="font-size:0.6em; opacity:0.5;">(un par ligne)</span>',
@@ -341,8 +386,22 @@ with st.sidebar:
 
     if st.button("Valider", key="btn_valider_joueurs"):
         st.session_state["mes_joueurs_input"] = st.session_state["mes_joueurs_textarea"]
+        lignes = [j.strip() for j in st.session_state["mes_joueurs_input"].split('\n') if j.strip()]
+        st.session_state["verification_mes_joueurs"] = _verifier_noms_joueurs(
+            lignes, df, df_n1, cols_journees, cols_journees_n1, journee_actuelle
+        )
     else:
         st.session_state["mes_joueurs_input"] = mes_joueurs_input
+
+    for niveau, texte in st.session_state.get("verification_mes_joueurs", []):
+        if niveau == 'success':
+            st.caption(f"✓ {texte}")
+        elif niveau == 'error':
+            st.error(texte)
+        elif niveau == 'warning':
+            st.warning(texte)
+        elif niveau == 'info':
+            st.info(texte)
 
     filtrer = st.checkbox(
         "Afficher uniquement mes joueurs", value=False, key="filtrer_mes_joueurs"
