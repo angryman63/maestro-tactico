@@ -323,14 +323,22 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     df_mercato['Cote_pct'] = df_mercato.groupby('Poste')['Cote'].rank(pct=True)
     df_mercato['Note_pct'] = df_mercato.groupby('Poste')['NoteStabilisee'].rank(pct=True)
 
-    # À éviter — seuil relatif au poste (pas de seuil de Cote universel) : cher pour
-    # SON poste (au-delà du 60e percentile) ET décevant pour SON poste (sous la
-    # médiane), avant filtres. Calculé en mask pour pouvoir exclure ces joueurs des
-    # 4 autres stratégies plus bas (mutuellement exclusif, cf. mask_stars etc.).
-    mask_eviter = (
-        (df_mercato['Cote_pct'] > 0.60) &
-        (df_mercato['Note_pct'] < 0.50)
-    )
+    # À éviter — 3 critères indépendants (logique OU) : un seul suffit à qualifier
+    # le joueur, peu importe les autres. Calculé en mask pour pouvoir exclure ces
+    # joueurs des 4 autres stratégies plus bas (mutuellement exclusif, cf. mask_stars
+    # etc.) — un joueur "à éviter" n'apparaît jamais ailleurs, quel que soit le
+    # critère qui l'y a placé.
+    # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
+    #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
+    mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
+    # 2. Ne joue quasiment jamais (%Titu <= 10%) — inutile d'aligner un joueur qui
+    #    ne sera presque jamais titulaire, quel que soit son prix ou sa note.
+    mask_jamais_titulaire = df_mercato['%Titu'] <= 10
+    # 3. Particulièrement mauvais pour son poste (Note_pct <= 15%), peu importe le
+    #    prix — un joueur pas cher mais très en dessous de son poste reste un
+    #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
+    mask_note_tres_faible = df_mercato['Note_pct'] <= 0.15
+    mask_eviter = mask_cher_decevant | mask_jamais_titulaire | mask_note_tres_faible
     df_eviter = df_mercato[mask_eviter].copy()
 
     # --- ProbaBut / ProbaArret (point 1) : Monte Carlo face aux moyennes de ligne de la ligue ---
@@ -496,14 +504,28 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         st.markdown(
             '<div style="font-family:\'Oswald\',sans-serif; font-weight:700; '
             'font-size:1.05rem; letter-spacing:0.04em; text-transform:uppercase; '
-            'color:#c8a84b; margin:0.4rem 0 0.8rem;">Joueurs chers mais décevants</div>',
+            'color:#c8a84b; margin:0.4rem 0 0.8rem;">Joueurs à éviter</div>',
             unsafe_allow_html=True
         )
         df_eviter_affiche = df_eviter.copy()
-        df_eviter_affiche['Raison'] = df_eviter_affiche.apply(lambda row:
-            "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
-            else "Cher + note décevante", axis=1
-        )
+
+        def _raison_eviter(row):
+            # Les 3 critères sont indépendants (OU) : un joueur peut en cumuler
+            # plusieurs (ex. cher+décevant ET ne joue jamais) — toutes les
+            # raisons qui s'appliquent sont listées, pas seulement la première.
+            raisons = []
+            if row['Cote_pct'] > 0.60 and row['Note_pct'] < 0.50:
+                raisons.append(
+                    "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
+                    else "Cher + note décevante"
+                )
+            if row['%Titu'] <= 10:
+                raisons.append("Ne joue quasiment jamais")
+            if row['Note_pct'] <= 0.15:
+                raisons.append("Note très faible pour son poste")
+            return " · ".join(raisons)
+
+        df_eviter_affiche['Raison'] = df_eviter_affiche.apply(_raison_eviter, axis=1)
         st.markdown(
             _table_html(
                 df_eviter_affiche[['Joueur', 'Poste', 'Cote', 'Enchere', 'Tension',
