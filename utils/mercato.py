@@ -42,8 +42,20 @@ POSTES_SENSIBLES_STRATEGIE = {'A', 'MO', 'G'}
 # %Titu / AchatT1, par stratégie (point 7). Fractions exactes sur quinzièmes pour
 # que la somme retombe pile sur 1.0 (les pourcentages arrondis type "13.3%" du
 # cahier des charges correspondent à 2/15, pas exactement 0.133).
+#
+# Cas particulier de Stars : Variation_residu (résidu d'une régression Variation ~
+# Note + Cote) est construit pour être décorrélé de la Cote — or le seuil de
+# qualification Stars (Cote_pct >= 0.85 et Note_pct >= 0.75) tasse déjà Note/
+# ProbaBut/AchatT1 près de leur plafond parmi les qualifiés, alors que Variation_residu
+# garde tout son étalement. Résultat : à poids égal (2/15 chacun), c'était Variation_residu
+# qui décidait de facto du haut du classement Stars, au point de faire dépasser des
+# joueurs bien moins chers/moins demandés (ex. Cote 18 devant Cote 39) — sans lien avec
+# le prix ou la demande réelle, alors que Stars vise justement les valeurs sûres du haut
+# du marché. Poids réduit à 3% pour Stars uniquement (Valeurs sûres/Équilibre/Pépites
+# inchangés, le diagnostic n'ayant pas montré le même problème pour eux), le report se
+# faisant sur AchatT1 (23,6%) pour renforcer le poids de la demande de marché réelle.
 PROPORTIONS_RESTANT = {
-    'stars':         {'note': 9 / 15, 'variation_residu': 2 / 15, 'titu': 2 / 15, 'achat_t1': 2 / 15},
+    'stars':         {'note': 0.60, 'variation_residu': 0.03, 'titu': 2 / 15, 'achat_t1': 1 - 0.60 - 0.03 - 2 / 15},
     'valeurs_sures': {'note': 8 / 15, 'variation_residu': 3 / 15, 'titu': 2 / 15, 'achat_t1': 2 / 15},
     'equilibre':     {'note': 7 / 15, 'variation_residu': 2 / 15, 'titu': 3 / 15, 'achat_t1': 3 / 15},
     'pepites':       {'note': 7 / 15, 'variation_residu': 2 / 15, 'titu': 2 / 15, 'achat_t1': 4 / 15},
