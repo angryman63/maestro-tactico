@@ -347,6 +347,10 @@ with st.sidebar:
     st.markdown(
         "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); text-align:center;'>"
         "maestrotactico.fr<br>contact@maestrotactico.fr"
+        "</div>"
+        "<div style='font-family:Raleway,sans-serif; font-size:10px; color:rgba(255,255,255,0.35); "
+        "text-align:center; margin-top:6px;'>"
+        "Pas de cookies, pas de traçage — juste les infos techniques basiques que l'hébergeur garde par défaut."
         "</div>",
         unsafe_allow_html=True
     )
