@@ -146,6 +146,14 @@ def calculer_score_mercato(row, strategie):
     le reste (1 - poids_ProbaBut) se répartissant entre Note / Variation_residu
     / %Titu / AchatT1 selon des proportions fixes par stratégie. La somme des
     poids vaut toujours 1.0, quel que soit le poste ou la stratégie.
+
+    Si AchatT1_norm est NaN (donnée '% achat T1' absente du fichier source pour
+    ce joueur, pas une valeur nulle) : pas de repli fabriqué (une enchère à 0%
+    n'a pas le même sens qu'une donnée manquante). Son poids est retiré et
+    redistribué proportionnellement sur les 4 composantes restantes (ProbaBut,
+    Note, Variation_residu, %Titu), pour que la somme des poids reste 1.0 —
+    le score garde ainsi la même échelle, sans pénalité mécanique liée à une
+    donnée simplement indisponible.
     """
     poste = row['Poste']
     mult_poste = MULTIPLICATEUR_POSTE_PROBA.get(poste, 1.0)
@@ -160,16 +168,31 @@ def calculer_score_mercato(row, strategie):
     note = row['NoteStabilisee']
     variation_residu = row['Variation_residu_norm'] * 10
     titu = row['%Titu'] / 100 * 10
+
+    poids_note = reste * prop['note']
+    poids_variation = reste * prop['variation_residu']
+    poids_titu = reste * prop['titu']
+    poids_achat = reste * prop['achat_t1']
+
+    if pd.isna(row['AchatT1_norm']):
+        renormalisation = 1 / (1 - poids_achat)
+        return (
+            poids_proba * renormalisation * proba +
+            poids_note * renormalisation * note +
+            poids_variation * renormalisation * variation_residu +
+            poids_titu * renormalisation * titu
+        )
+
     achat_t1 = row['AchatT1_norm'] * 10
     if strategie in ('equilibre', 'pepites'):
         achat_t1 = 10 - achat_t1
 
     return (
         poids_proba * proba +
-        reste * prop['note'] * note +
-        reste * prop['variation_residu'] * variation_residu +
-        reste * prop['titu'] * titu +
-        reste * prop['achat_t1'] * achat_t1
+        poids_note * note +
+        poids_variation * variation_residu +
+        poids_titu * titu +
+        poids_achat * achat_t1
     )
 
 
@@ -401,6 +424,12 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         label_visibility="collapsed"
     )
 
+    recherche_joueur = st.text_input(
+        "🔎 Rechercher un joueur",
+        key="mercato_recherche_joueur",
+        placeholder="Nom du joueur…"
+    ).strip()
+
     with st.expander("🏥 Légende blessures"):
         st.markdown("""
 |  | Statut |
@@ -428,13 +457,19 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
             'color:#c8a84b; margin:0.4rem 0 0.8rem;">Joueurs chers mais décevants</div>',
             unsafe_allow_html=True
         )
-        df_eviter['Raison'] = df_eviter.apply(lambda row:
+        df_eviter_affiche = df_eviter
+        if recherche_joueur:
+            df_eviter_affiche = df_eviter_affiche[
+                df_eviter_affiche['Joueur'].str.contains(recherche_joueur, case=False, na=False, regex=False)
+            ]
+        df_eviter_affiche = df_eviter_affiche.copy()
+        df_eviter_affiche['Raison'] = df_eviter_affiche.apply(lambda row:
             "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
             else "Cher + note décevante", axis=1
         )
         st.markdown(
             _table_html(
-                df_eviter[['Joueur', 'Poste', 'Cote', 'Enchere', 'Tension',
+                df_eviter_affiche[['Joueur', 'Poste', 'Cote', 'Enchere', 'Tension',
                            'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
                            ].rename(columns={'Enchere': 'Enchère moy.', 'Tension': 'Demande', 'Matchs_joues': 'Matchs joués'}).reset_index(drop=True)
             ),
@@ -451,10 +486,17 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         for tab, (code, nom) in zip(tabs, postes.items()):
             with tab:
                 df_poste = df_s[df_s['Poste'] == code]
+                if recherche_joueur:
+                    df_poste = df_poste[
+                        df_poste['Joueur'].str.contains(recherche_joueur, case=False, na=False, regex=False)
+                    ]
 
+                # Plus de plafond d'affichage (point 2) : la catégorie entière est
+                # montrée, triée par score — la barre de recherche ci-dessus permet
+                # de retrouver un joueur precis sans avoir a parcourir la liste.
                 top = df_poste.sort_values(
                     f'Score_{strategie_key}', ascending=False
-                ).head(10).copy()
+                ).copy()
                 nom_colonne_proba = 'Proba arrêt' if code == 'G' else 'Proba but'
                 top['ProbaBut'] = top['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
 
