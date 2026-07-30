@@ -75,14 +75,17 @@ def _afficher_tableau_triable(df, colonnes_affichage, cell_renderer, key_prefix)
             key=f"tri_ordre_{key_prefix}", label_visibility="hidden"
         )
 
+    croissant = (ordre == "↑")
     if colonne_tri == "Recommandé":
-        df_affiche = df
+        # Trie sur le score interne _score plutôt que de garder tel quel
+        # l'ordre déjà pré-trié (toujours décroissant) passé par l'appelant —
+        # sans ça, la flèche de tri n'avait aucun effet sur "Recommandé".
+        df_affiche = df.sort_values('_score', ascending=croissant, kind='mergesort')
     else:
-        croissant = (ordre == "↑")
         df_affiche = _trier_tableau(df, colonne_tri, croissant)
 
     st.markdown(
-        table_html(df_affiche.reset_index(drop=True), cell_renderer),
+        table_html(df_affiche[colonnes_affichage].reset_index(drop=True), cell_renderer),
         unsafe_allow_html=True
     )
 
@@ -193,7 +196,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         ], key="hebdo_postes")
         with tab0:
             colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire']
-            top = df_mes_joueurs.sort_values('_score', ascending=False)[colonnes_mes_joueurs]
+            top = df_mes_joueurs.sort_values('_score', ascending=False)[colonnes_mes_joueurs + ['_score']]
             if len(top) > 0:
                 _afficher_tableau_triable(
                     top.reset_index(drop=True), colonnes_mes_joueurs,
@@ -215,7 +218,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         with tab:
             top = df_scores[df_scores['Poste'] == code].sort_values(
                 '_score', ascending=False
-            )[colonnes_affichage]
+            )[colonnes_affichage + ['_score']]
             if len(top) > 0:
                 _afficher_tableau_triable(
                     top.reset_index(drop=True), colonnes_affichage,
