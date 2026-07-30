@@ -322,7 +322,7 @@ journee_actuelle = determiner_journee_actuelle(df, cols_journees)
 # ============================================================
 
 with st.sidebar:
-    st.markdown("### Mes joueurs")
+    st.markdown("### Mes joueurs (un par ligne)")
 
     # Initialisation session state
     if "mes_joueurs_input" not in st.session_state:

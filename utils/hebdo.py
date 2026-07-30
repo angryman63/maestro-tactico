@@ -58,21 +58,42 @@ def _trier_tableau(df, colonne, croissant):
     )
 
 
+def _synchroniser_tri(col_key, ordre_key):
+    """Callback on_change : mémorise le dernier choix de tri fait par l'utilisateur
+    (peu importe l'onglet), pour que _afficher_tableau_triable() puisse le
+    reproduire dans les autres onglets au prochain rendu (point 3)."""
+    st.session_state['hebdo_dernier_tri_col'] = st.session_state[col_key]
+    st.session_state['hebdo_dernier_tri_ordre'] = st.session_state[ordre_key]
+
+
 def _afficher_tableau_triable(df, colonnes_affichage, cell_renderer, key_prefix):
     """Affiche un sélecteur 'Trier par' + croissant/décroissant au-dessus du tableau stylé,
     puis le tableau HTML. Ne modifie ni les noms de colonnes ni les données : seul
     l'ordre des lignes change."""
+    options = ["Recommandé"] + colonnes_affichage
+    col_key = f"tri_col_{key_prefix}"
+    ordre_key = f"tri_ordre_{key_prefix}"
+
+    # Persistance du tri entre onglets (point 3) : Streamlit impose une clé de
+    # widget distincte par onglet (les 7 onglets sont tous instanciés à chaque
+    # rendu), donc chaque onglet est réaligné ici sur le dernier choix fait
+    # n'importe où — sans ça, changer de tri sur un onglet ne changeait rien
+    # aux autres, qui retombaient sur leur propre défaut "Recommandé".
+    dernier_col = st.session_state.get('hebdo_dernier_tri_col', "Recommandé")
+    st.session_state[col_key] = dernier_col if dernier_col in options else "Recommandé"
+    st.session_state[ordre_key] = st.session_state.get('hebdo_dernier_tri_ordre', "↓")
+
     col_select, col_ordre = st.columns([3, 1])
     with col_select:
-        options = ["Recommandé"] + colonnes_affichage
         colonne_tri = st.selectbox(
-            "Trier par", options, index=0, key=f"tri_col_{key_prefix}",
-            filter_mode=None
+            "Trier par", options, key=col_key, filter_mode=None,
+            on_change=_synchroniser_tri, args=(col_key, ordre_key)
         )
     with col_ordre:
         ordre = st.radio(
             "Ordre", ["↓", "↑"], horizontal=True,
-            key=f"tri_ordre_{key_prefix}", label_visibility="hidden"
+            key=ordre_key, label_visibility="hidden",
+            on_change=_synchroniser_tri, args=(col_key, ordre_key)
         )
 
     croissant = (ordre == "↑")
@@ -152,6 +173,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             'Note saison': round(moyenne_saison, 2),
             'Forme 6J': round(float(note_forme), 2),
             '_regularite_brute': regularite_brute,
+            '_titu_pct': round(prob_jouer * 100, 1),
             '% Titulaire': f"{int(prob_jouer*100)}%",
             '_score': round(float(score), 2)
         })
@@ -166,7 +188,8 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         df_scores.loc[mask, 'Régularité'] = df_scores.loc[mask].apply(
             lambda row: etiquette_regularite(
                 row['_regularite_brute'], q25, q50, q75,
-                row['Note saison'], note_mediane_poste
+                row['Note saison'], note_mediane_poste,
+                row['_titu_pct']
             ),
             axis=1
         )
@@ -210,13 +233,20 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             "Défenseurs C.", "Défenseurs L.", "Gardiens"
         ], key="hebdo_postes")
 
+    # "Afficher uniquement mes joueurs" doit aussi filtrer les onglets par poste,
+    # pas seulement conditionner l'existence de l'onglet "Mes joueurs" — sans
+    # cette ligne, Attaquants/Milieux Off./etc. affichaient toujours TOUS les
+    # joueurs du poste, case cochée ou non (bug : la case n'avait aucun effet
+    # visible sur ces onglets-là).
+    df_source_postes = df_mes_joueurs if (filtrer and mes_joueurs_input.strip()) else df_scores
+
     postes_tabs = {
         tab1: 'A', tab2: 'MO', tab3: 'MD',
         tab4: 'DC', tab5: 'DL', tab6: 'G'
     }
     for tab, code in postes_tabs.items():
         with tab:
-            top = df_scores[df_scores['Poste'] == code].sort_values(
+            top = df_source_postes[df_source_postes['Poste'] == code].sort_values(
                 '_score', ascending=False
             )[colonnes_affichage + ['_score']]
             if len(top) > 0:
