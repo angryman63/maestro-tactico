@@ -268,7 +268,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
             f"affichage de l'enchère moyenne toutes tailles confondues."
         )
 
-    base_cols = ['Joueur', 'Poste', 'Cote', 'Var Cote', col_enchere, col_achat,
+    base_cols = ['Joueur', 'Club', 'Poste', 'Cote', 'Var Cote', col_enchere, col_achat,
                  'Note', 'Variation', 'Buts', '%Titu', 'Indispo ?']
     df_mercato = df[base_cols].copy()
     df_mercato = df_mercato.rename(columns={
@@ -534,7 +534,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
 | 🐢 | Retour de blessure — 4 à 7 matchs d'absence |
 """)
 
-    cols_affichage = ['Joueur', 'Poste', 'Cote', 'Enchere', 'Tension',
+    cols_affichage = ['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
                        'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte']
 
     strategie_map = {
@@ -560,7 +560,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
             resultats['ProbaBut'] = resultats['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
             st.markdown(
                 _table_html(
-                    resultats[['Joueur', 'Poste', 'Categorie', 'Cote', 'Enchere', 'Tension',
+                    resultats[['Joueur', 'Club', 'Poste', 'Categorie', 'Cote', 'Enchere', 'Tension',
                                'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte', 'ProbaBut']
                                ].sort_values('Cote', ascending=False
                                ).rename(columns={
@@ -599,7 +599,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         df_eviter_affiche['Raison'] = df_eviter_affiche.apply(_raison_eviter, axis=1)
         st.markdown(
             _table_html(
-                df_eviter_affiche[['Joueur', 'Poste', 'Cote', 'Enchere', 'Tension',
+                df_eviter_affiche[['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
                            'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
                            ].rename(columns={
                                'Enchere': 'Enchère moy.', 'Tension': 'Demande', 'Matchs_joues': 'Matchs joués',
