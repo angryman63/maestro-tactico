@@ -52,7 +52,6 @@ div[data-testid="stButton"] button p {
 /* ── Sélecteurs en pilules or (Mercato + Simuler le match) ── */
 .st-key-mercato_taille_ligue [data-testid="stRadioGroup"],
 .st-key-mercato_strategie [data-testid="stRadioGroup"],
-.st-key-strategie_jeu [data-testid="stRadioGroup"],
 .st-key-mode_analyse [data-testid="stRadioGroup"],
 .st-key-importance [data-testid="stRadioGroup"],
 .st-key-domicile [data-testid="stRadioGroup"] {
@@ -60,7 +59,6 @@ div[data-testid="stButton"] button p {
 }
 .st-key-mercato_taille_ligue [data-testid="stRadioOption"],
 .st-key-mercato_strategie [data-testid="stRadioOption"],
-.st-key-strategie_jeu [data-testid="stRadioOption"],
 .st-key-mode_analyse [data-testid="stRadioOption"],
 .st-key-importance [data-testid="stRadioOption"],
 .st-key-domicile [data-testid="stRadioOption"] {
@@ -72,7 +70,6 @@ div[data-testid="stButton"] button p {
 }
 .st-key-mercato_taille_ligue [data-testid="stRadioOption"]:hover,
 .st-key-mercato_strategie [data-testid="stRadioOption"]:hover,
-.st-key-strategie_jeu [data-testid="stRadioOption"]:hover,
 .st-key-mode_analyse [data-testid="stRadioOption"]:hover,
 .st-key-importance [data-testid="stRadioOption"]:hover,
 .st-key-domicile [data-testid="stRadioOption"]:hover {
@@ -80,7 +77,6 @@ div[data-testid="stButton"] button p {
 }
 .st-key-mercato_taille_ligue [data-testid="stRadioOption"][data-selected="true"],
 .st-key-mercato_strategie [data-testid="stRadioOption"][data-selected="true"],
-.st-key-strategie_jeu [data-testid="stRadioOption"][data-selected="true"],
 .st-key-mode_analyse [data-testid="stRadioOption"][data-selected="true"],
 .st-key-importance [data-testid="stRadioOption"][data-selected="true"],
 .st-key-domicile [data-testid="stRadioOption"][data-selected="true"] {
@@ -89,7 +85,6 @@ div[data-testid="stButton"] button p {
 }
 .st-key-mercato_taille_ligue [data-testid="stRadioOption"] > div > div > div:first-child,
 .st-key-mercato_strategie [data-testid="stRadioOption"] > div > div > div:first-child,
-.st-key-strategie_jeu [data-testid="stRadioOption"] > div > div > div:first-child,
 .st-key-mode_analyse [data-testid="stRadioOption"] > div > div > div:first-child,
 .st-key-importance [data-testid="stRadioOption"] > div > div > div:first-child,
 .st-key-domicile [data-testid="stRadioOption"] > div > div > div:first-child {
@@ -97,7 +92,6 @@ div[data-testid="stButton"] button p {
 }
 .st-key-mercato_taille_ligue [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p,
 .st-key-mercato_strategie [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p,
-.st-key-strategie_jeu [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p,
 .st-key-mode_analyse [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p,
 .st-key-importance [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p,
 .st-key-domicile [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p {
@@ -110,7 +104,6 @@ div[data-testid="stButton"] button p {
 }
 .st-key-mercato_taille_ligue [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p,
 .st-key-mercato_strategie [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p,
-.st-key-strategie_jeu [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p,
 .st-key-mode_analyse [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p,
 .st-key-importance [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p,
 .st-key-domicile [data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p {
@@ -158,7 +151,6 @@ div[data-testid="stButton"] button p {
 }
 
 /* ── Labels des champs à accent or (Simuler le match) : groupes en pilules + bonus adverse ── */
-.st-key-strategie_jeu label[data-testid="stWidgetLabel"] p,
 .st-key-mode_analyse label[data-testid="stWidgetLabel"] p,
 .st-key-domicile label[data-testid="stWidgetLabel"] p,
 .st-key-importance label[data-testid="stWidgetLabel"] p,

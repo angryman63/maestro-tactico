@@ -54,16 +54,7 @@ bonus_key_map = {
     "Aucun": None,
 }
 
-# Critère de stratégie (en plus de %Titu) utilisé par meilleure_compo() pour
-# reconstituer une compo adverse plausible.
-CRITERE_STRATEGIE_COMPO = {
-    "Offensive": 'proba_but',
-    "Défensive": 'regularite',
-    "Équilibrée": 'note_pred',
-}
-
-
-def meilleure_compo(noms_joueurs, df, cols_journees, strategie, df_n1, cols_n1, journee_actuelle,
+def meilleure_compo(noms_joueurs, df, cols_journees, df_n1, cols_n1, journee_actuelle,
                      moyennes_lignes, notes_mediane_poste, buts_mediane_poste):
     joueurs_info = []
     for nom in [n.strip() for n in noms_joueurs.split('\n') if n.strip()]:
@@ -74,18 +65,26 @@ def meilleure_compo(noms_joueurs, df, cols_journees, strategie, df_n1, cols_n1, 
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
 
-    # Score combiné = 0.75 × %Titu_percentile(par poste) + 0.25 × critère_percentile
+    # Score combiné = 0.75 × %Titu_percentile(par poste) + 0.25 × Note_percentile
     # (par poste) — même méthode de normalisation en rang percentile par poste que
     # le reste de Mercato (utils/mercato.py : groupby('Poste')...rank(pct=True)),
     # plutôt qu'un tri brut sur un seul critère : un joueur très titulaire mais
     # avec de très mauvaises stats peut ainsi être dépassé par un joueur un peu
-    # moins titulaire mais nettement meilleur sur le critère de la stratégie choisie.
+    # moins titulaire mais nettement meilleur sur le plan de la note.
+    #
+    # Le critère secondaire est fixe (Note prédite), quel que soit le contexte
+    # d'appel : la compo adverse reconstituée ici est censée approcher le onze
+    # RÉEL que l'entraîneur adverse alignerait, ce qui ne dépend évidemment pas
+    # d'une préférence de jeu (offensive/défensive/équilibrée) propre à
+    # l'utilisateur de l'app — l'adversaire n'a aucune idée de ce choix. La Note
+    # est le seul des 3 anciens critères pertinent pour TOUS les postes (Régularité
+    # fait déjà doublon avec %Titu — un joueur régulier a presque toujours un
+    # %Titu élevé — et Proba but n'a de sens que pour les attaquants/gardiens).
     if joueurs_info:
-        critere_col = CRITERE_STRATEGIE_COMPO.get(strategie, 'note_pred')
         df_pool = pd.DataFrame(joueurs_info)
         df_pool['titu_pct'] = df_pool.groupby('poste')['titu'].rank(pct=True)
-        df_pool['critere_pct'] = df_pool.groupby('poste')[critere_col].rank(pct=True)
-        scores = 0.75 * df_pool['titu_pct'] + 0.25 * df_pool['critere_pct']
+        df_pool['note_pct'] = df_pool.groupby('poste')['note_pred'].rank(pct=True)
+        scores = 0.75 * df_pool['titu_pct'] + 0.25 * df_pool['note_pct']
         for info, score in zip(joueurs_info, scores):
             info['score_compo'] = float(score)
         joueurs_info.sort(key=lambda x: x['score_compo'], reverse=True)
@@ -138,14 +137,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
 
     moyennes_lignes, notes_mediane_poste, buts_mediane_poste = calculer_contexte_ligue(df, cols_journees)
 
-    separateur("STRATÉGIE")
-    strategie_jeu = st.radio(
-        "Stratégie de jeu",
-        ["Offensive", "Équilibrée", "Défensive"],
-        horizontal=True,
-        key="strategie_jeu"
-    )
-
+    separateur("MODE D'ANALYSE")
     mode_analyse = st.radio(
         "Mode d'analyse",
         ["Analyse préventive (avant match)", "Analyse précise (compo connue)"],
@@ -314,7 +306,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 equipe_adv[poste_vers_ligne(j['poste'])].append(j)
         else:
             equipe_adv, _ = meilleure_compo(
-                adv_joueurs, df, cols_journees, strategie_jeu,
+                adv_joueurs, df, cols_journees,
                 df_n1, cols_journees_n1, journee_actuelle,
                 moyennes_lignes, notes_mediane_poste, buts_mediane_poste
             )
@@ -401,17 +393,16 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 continue
             for j in joueurs:
                 if j['note_pred'] is not None:
-                    if strategie_jeu == "Offensive":
-                        score_cap = j['proba_but']*0.6 + (j['note_pred']/10)*0.4
-                    elif strategie_jeu == "Défensive":
-                        score_cap = j['regularite']*0.6 + (j['note_pred']/10)*0.4
-                    else:
-                        score_cap = (j['note_pred']/10)*0.5 + j['regularite']*0.3 + j['proba_but']*0.2
+                    # Formule fixe (note + régularité + proba but), même pondération
+                    # équilibrée quel que soit le contexte d'appel — cette recommandation
+                    # reste une simple suggestion, l'utilisateur choisit son propre
+                    # capitaine via le sélecteur "Capitaine" ci-dessus.
+                    score_cap = (j['note_pred']/10)*0.5 + j['regularite']*0.3 + j['proba_but']*0.2
                     candidats_cap.append((j['nom'], j['poste'], j['note_pred'], score_cap))
 
         if equipe_moi.get('GB') and equipe_moi['GB']:
             gb = equipe_moi['GB'][0]
-            if gb.get('proba_but', 0) >= 0.10 and strategie_jeu == "Défensive":
+            if gb.get('proba_but', 0) >= 0.10:
                 candidats_cap.append((gb['nom'], 'G', gb['note_pred'], 999))
 
         if candidats_cap:
