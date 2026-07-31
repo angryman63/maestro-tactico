@@ -1,35 +1,45 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from modele import (get_joueur_info, poste_vers_ligne,
+from modele import (get_joueur_info, poste_vers_ligne, trouver_historique_n1,
+                    stabiliser_stats_proba_but, calculer_repli_stabilisation,
                     monte_carlo_match, get_stats_joueur_mc, calculer_contexte_ligue)
 from utils.table_style import inject_style, pill, escape, separateur
 
-def _joueur_vers_mc(j, ligne, df, cols_journees):
-    """Convertit un joueur (dict issu de get_joueur_info, avec 'nom'/'note_pred'/'buts')
-    au format attendu par monte_carlo_match : moyenne/écart-type calculés sur ses
-    vraies notes de la saison si suffisamment de matchs (>=3), sinon repli sur la
-    note prédite (note_pred) et l'estimation de buts déjà calculée par ailleurs."""
+def _joueur_vers_mc(j, ligne, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
+                     moyenne_mediane_poste, moyenne_repli_global,
+                     ecart_type_mediane_poste, ecart_type_repli_global):
+    """Convertit un joueur (dict issu de get_joueur_info, avec 'nom'/'poste'/'note_pred'/'buts')
+    au format attendu par monte_carlo_match : moyenne/écart-type stabilisés via
+    stabiliser_stats_proba_but() — même principe que Mercato (utils/mercato.py) :
+    mélange avec l'historique N-1 selon poids_phase(), pour ne pas traiter la
+    moyenne/variance d'un joueur à 1-2 matchs comme représentative (l'ancien seuil
+    dur ">= 3 matchs sinon note_pred" traitait tout échantillon en dessous de 3 de
+    façon binaire, sans le mélange progressif que permet la stabilisation).
+    'buts' réutilise directement j['buts'], déjà stabilisé par get_joueur_info()
+    (repli sur N-1 puis médiane du poste)."""
     row = df[df['Joueur'].str.lower() == j['nom'].lower()]
-    if len(row) > 0:
-        row = row.iloc[0]
-        notes = [row[col] for col in cols_journees if row[col] > 0]
-        if len(notes) >= 3:
-            buts = pd.to_numeric(row.get('Buts', 0), errors='coerce')
-            matchs = len(notes)
-            buts_par_match = buts / matchs if matchs > 0 and not pd.isna(buts) else 0
-            return {
-                'nom': j['nom'],
-                'ligne': ligne,
-                'moyenne': float(np.mean(notes)),
-                'ecart_type': float(np.std(notes)),
-                'buts': float(buts_par_match)
-            }
+    if len(row) == 0:
+        return {
+            'nom': j['nom'],
+            'ligne': ligne,
+            'moyenne': j['note_pred'] or 5.0,
+            'ecart_type': 1.0,
+            'buts': j['buts']
+        }
+    row = row.iloc[0]
+    poste = row.get('Poste', j.get('poste', 'MO'))
+    row_n1 = trouver_historique_n1(row['Joueur'], poste, df_n1) if df_n1 is not None else None
+    moyenne, ecart_type = stabiliser_stats_proba_but(
+        row_n1, cols_journees_n1, row, cols_journees, journee_actuelle,
+        moyenne_mediane_poste.get(poste, moyenne_repli_global),
+        ecart_type_mediane_poste.get(poste, ecart_type_repli_global)
+    )
     return {
         'nom': j['nom'],
         'ligne': ligne,
-        'moyenne': j['note_pred'] or 5.0,
-        'ecart_type': 1.0,
+        'moyenne': float(moyenne),
+        'ecart_type': float(ecart_type),
         'buts': j['buts']
     }
 
@@ -136,6 +146,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
     inject_style()
 
     moyennes_lignes, notes_mediane_poste, buts_mediane_poste = calculer_contexte_ligue(df, cols_journees)
+    (moyenne_mediane_poste, moyenne_repli_global,
+     ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)
 
     separateur("MODE D'ANALYSE")
     mode_analyse = st.radio(
@@ -332,11 +344,18 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 )
 
         # Convertir en format Monte Carlo
+        def joueur_vers_mc(j, ligne):
+            return _joueur_vers_mc(
+                j, ligne, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
+                moyenne_mediane_poste, moyenne_repli_global,
+                ecart_type_mediane_poste, ecart_type_repli_global
+            )
+
         def equipe_vers_mc(equipe):
             joueurs_mc = []
             for ligne, joueurs in equipe.items():
                 for j in joueurs:
-                    joueurs_mc.append(_joueur_vers_mc(j, ligne, df, cols_journees))
+                    joueurs_mc.append(joueur_vers_mc(j, ligne))
             return joueurs_mc
 
         joueurs_moi_mc = equipe_vers_mc(equipe_moi)
@@ -364,7 +383,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             regles_remplacement_mc.append({
                 'titulaire': nom_titu_regle,
                 'seuil': float(seuil_regle),
-                'remplacant': _joueur_vers_mc(info_rempl, ligne_rempl, df, cols_journees)
+                'remplacant': joueur_vers_mc(info_rempl, ligne_rempl)
             })
 
         bonus_adv_key = bonus_key_map.get(bonus_adv_estime, None)

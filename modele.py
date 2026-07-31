@@ -267,6 +267,34 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
     ecart_type = poids_n1 * ecart_type_n1 + poids_actuelle * ecart_type_actuelle
     return moyenne, ecart_type
 
+def calculer_repli_stabilisation(df, cols_journees):
+    """Précalcule, une fois pour tout le dataframe chargé, les valeurs de repli
+    par poste utilisées par stabiliser_stats_proba_but() — mêmes conventions que
+    utils/mercato.py::afficher_mercato (médiane de la moyenne/écart-type de notes
+    jouées cette saison, calculée UNIQUEMENT sur les joueurs à échantillon fiable,
+    >= 3 matchs joués, pour ne pas être elles-mêmes biaisées par les petits
+    échantillons qu'elles sont censées corriger). Renvoie (moyenne_mediane_poste,
+    moyenne_repli_global, ecart_type_mediane_poste, ecart_type_repli_global)."""
+    def _stats_ligne(row):
+        notes = [row[c] for c in cols_journees if row[c] > 0]
+        return pd.Series({
+            'matchs': len(notes),
+            'moyenne': float(np.mean(notes)) if notes else np.nan,
+            'ecart_type': float(np.std(notes)) if notes else np.nan,
+            'poste': row.get('Poste', 'MO'),
+        })
+
+    stats = df.apply(_stats_ligne, axis=1)
+    fiable = stats[stats['matchs'] >= 3]
+
+    moyenne_mediane_poste = fiable.groupby('poste')['moyenne'].median().to_dict()
+    ecart_type_mediane_poste = fiable.groupby('poste')['ecart_type'].median().to_dict()
+    moyenne_repli_global = fiable['moyenne'].median()
+    ecart_type_repli_global = fiable['ecart_type'].median()
+
+    return (moyenne_mediane_poste, moyenne_repli_global,
+            ecart_type_mediane_poste, ecart_type_repli_global)
+
 def get_prediction_complete(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle):
     """
     Assemble predire_note_hybride() (la note pondérée) et alerte_blessure()
@@ -576,7 +604,16 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
 
     # Remplacements configurés par l'utilisateur (mon équipe uniquement) :
     # {nom du titulaire -> {'seuil': ..., 'remplacant': {'nom','ligne','moyenne','ecart_type','buts'}}}
-    regles_par_titulaire = {r['titulaire']: r for r in (regles_remplacement or [])}
+    # Clé normalisée (accents/casse/espaces) : le nom du titulaire vient tel que
+    # saisi par l'utilisateur (regle['titulaire']), alors que j['nom'] est le nom
+    # canonique du dataframe (get_joueur_info) — une différence de casse ou
+    # d'accent entre les deux (ex. "Dembele" saisi vs "Dembélé" en base) ferait
+    # sinon échouer la correspondance silencieusement, sans jamais déclencher le
+    # remplacement même si la note tirée passe sous le seuil.
+    def _cle_nom(nom):
+        return normaliser_accents(str(nom)).strip().lower()
+
+    regles_par_titulaire = {_cle_nom(r['titulaire']): r for r in (regles_remplacement or [])}
 
     for _ in range(n_simulations):
         notes_moi = {}
@@ -586,7 +623,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             ligne, buts = j['ligne'], j['buts']
             substitue = False
 
-            regle = regles_par_titulaire.get(j['nom'])
+            regle = regles_par_titulaire.get(_cle_nom(j['nom']))
             if regle and note < regle['seuil']:
                 rempl = regle['remplacant']
                 note = np.random.normal(rempl['moyenne'], rempl['ecart_type'])
