@@ -440,8 +440,27 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
 
     # Score pépite : prix bas (rang inversé) + note correcte, re-percentilé par poste
     # pour garantir un palier "top X%" exact (la combinaison brute n'est pas uniforme).
-    score_pepite = 0.6 * (1 - df_mercato['Cote_pct']) + 0.4 * df_mercato['Note_pct']
-    df_mercato['Score_pepite_pct'] = score_pepite.groupby(df_mercato['Poste']).rank(pct=True)
+    #
+    # Calculé UNIQUEMENT parmi les joueurs qui passent déjà le filtre de titularisation
+    # de Pépites (%Titu >= 50) au sein du même poste — pas sur le poste entier. Sinon,
+    # les joueurs jamais utilisés (prix plancher mécanique, souvent 3e/4e choix) polluent
+    # le haut du classement "pas cher" avec une cherté nulle qu'ils n'ont jamais eu à
+    # justifier par du temps de jeu, écrasant le rang des joueurs qui jouent réellement.
+    # Diagnostic Gardiens : 32% de gardiens jamais utilisés cette saison, tous au prix
+    # plancher du poste, contre seulement 5-10% sur les autres postes — assez pour que
+    # le meilleur gardien réellement titulaire ne dépasse jamais le seuil de 0.85 alors
+    # qu'il le devrait. Restreindre le pourcentile à la sous-population qui joue déjà
+    # élimine cette pollution sur tous les postes, uniformément (effet mineur ailleurs,
+    # où la proportion de joueurs jamais utilisés est bien plus faible).
+    mask_titu_pepites = df_mercato['%Titu'] >= 50
+    df_actifs = df_mercato.loc[mask_titu_pepites]
+    cote_pct_actifs = df_actifs.groupby('Poste')['Cote'].rank(pct=True)
+    note_pct_actifs = df_actifs.groupby('Poste')['NoteStabilisee'].rank(pct=True)
+    score_pepite_actifs = 0.6 * (1 - cote_pct_actifs) + 0.4 * note_pct_actifs
+    df_mercato['Score_pepite_pct'] = np.nan
+    df_mercato.loc[mask_titu_pepites, 'Score_pepite_pct'] = (
+        score_pepite_actifs.groupby(df_actifs['Poste']).rank(pct=True)
+    )
 
     mask_stars = (
         (df_mercato['Cote_pct'] >= 0.95) &
