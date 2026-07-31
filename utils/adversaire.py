@@ -233,10 +233,12 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         joueur_uber = None
         conflit_capitaine_uber = False
         if "Uber Eats" in mes_bonus_dispo:
-            joueur_uber = st.text_input(
+            joueur_uber_choisi = st.selectbox(
                 "Joueur boosté par Uber Eats :",
+                ["Aucun"] + noms_mes_titu,
                 key="joueur_uber"
             )
+            joueur_uber = joueur_uber_choisi if joueur_uber_choisi != "Aucun" else None
             # Règle réelle : Uber Eats et Capitaine ne peuvent pas cibler LE MÊME
             # joueur (pas d'exclusion globale entre les deux bonus). Si conflit,
             # Uber Eats est simplement ignoré pour ce joueur au moment de lancer
@@ -316,6 +318,18 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             st.warning(f"Joueurs non trouvés (mon équipe) : {', '.join(non_trouves_moi)}")
         if non_trouves_adv:
             st.warning(f"Joueurs non trouvés (adversaire) : {', '.join(non_trouves_adv)}")
+
+        # Cas résiduel : le joueur Uber Eats vient du sélecteur (limité aux titulaires
+        # saisis), mais ce titulaire précis peut malgré tout ne pas avoir été retrouvé
+        # dans les données (voir l'avertissement ci-dessus) — avertissement explicite
+        # plutôt qu'un bonus qui ne s'applique silencieusement à personne.
+        if joueur_uber and not conflit_capitaine_uber:
+            noms_trouves_moi = {j['nom'].strip().lower() for j in titu_moi}
+            if joueur_uber.strip().lower() not in noms_trouves_moi:
+                st.warning(
+                    f"Uber Eats : « {joueur_uber} » n'a pas été retrouvé dans les données "
+                    f"— le bonus ne s'appliquera à personne pour cette simulation."
+                )
 
         # Convertir en format Monte Carlo
         def equipe_vers_mc(equipe):
@@ -420,7 +434,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                     bonus_key = bonus_key_map.get(bonus, None)
                     res_b = monte_carlo_match(
                         joueurs_moi_mc, joueurs_adv_mc,
-                        n_simulations=200,
+                        n_simulations=2000,
                         bonus_moi=bonus_key,
                         bonus_adv=bonus_adv_key,
                         regles_remplacement=regles_remplacement_mc,
@@ -429,6 +443,20 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                         joueur_uber=(None if conflit_capitaine_uber else joueur_uber)
                     )
                     resultats_bonus[bonus] = res_b
+
+            # Mis en avant visuellement (st.metric, comme le résultat principal) au
+            # lieu d'un simple texte noyé dans la page — c'est le chiffre que
+            # l'utilisateur vient chercher dans cette section.
+            res_avec_bonus = resultats_bonus[mes_bonus_dispo]
+            gain_metric = round(res_avec_bonus['victoires'] - res_sb['victoires'], 1)
+            col_bonus1, col_bonus2 = st.columns(2)
+            with col_bonus1:
+                st.metric("Victoire (sans bonus)", f"{res_sb['victoires']}%")
+            with col_bonus2:
+                st.metric(
+                    "Victoire (avec bonus)", f"{res_avec_bonus['victoires']}%",
+                    delta=f"{gain_metric:+.1f} pts"
+                )
 
             for bonus, res in sorted(
                 resultats_bonus.items(),
