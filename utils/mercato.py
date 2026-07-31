@@ -122,10 +122,16 @@ def _formater_cellule(col, val):
         return f"{val:.2f}"
     if col == 'Buts':
         return f"{val:.0f}"
-    if col == '%Titu':
+    if col == '% Titu (sur matchs joués)':
         return f"{val:.0f}%"
     if col == 'Matchs joués':
         return f"{val:.0f}"
+    if isinstance(val, (float, np.floating)):
+        # Filet de sécurité : toute colonne numérique calculée non listée
+        # explicitement ci-dessus est arrondie avant affichage, pour ne
+        # jamais montrer les artefacts de virgule flottante bruts d'un
+        # calcul (ex. 56.99999999999999 au lieu de 57).
+        return f"{val:.2f}"
     return str(val)
 
 
