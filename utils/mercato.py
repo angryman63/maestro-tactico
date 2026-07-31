@@ -200,6 +200,42 @@ def calculer_score_mercato(row, strategie):
     )
 
 
+def _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1):
+    """Critère "Apparaît très rarement" de "À éviter" (point 2) : matchs_joues /
+    journee_actuelle < 20%, à partir de la journée 8 uniquement.
+
+    Avant J8, l'échantillon de la saison en cours est trop petit pour juger
+    équitablement — on applique à la place une présomption basée sur la
+    participation N-1 du joueur (même correspondance que trouver_historique_n1,
+    utilisée partout ailleurs) : un historique N-1 fiable montrant une faible
+    participation (matchs_joues_N1 / nb_journees_N1 < 20%) classe le joueur "à
+    éviter" par défaut pour ce critère — SAUF si sa saison en cours prouve déjà
+    le contraire (dès que matchs_joues/journee_actuelle >= 20% cette saison,
+    même sur un tout petit échantillon, ça l'emporte immédiatement sur son
+    passif N-1). Sans historique N-1 fiable (recrue, débutant, homonyme
+    ambigu) : aucune présomption dans un sens ou l'autre — ni "à éviter" par ce
+    motif, ni exemption.
+
+    Retourne (est_rare: bool, motif: str | None)."""
+    ratio_actuelle = (row['Matchs_joues'] / journee_actuelle) if journee_actuelle > 0 else 0.0
+
+    if journee_actuelle >= 8:
+        if ratio_actuelle < 0.20:
+            return True, "Apparaît très rarement"
+        return False, None
+
+    row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+    if row_n1 is None:
+        return False, None
+    matchs_n1 = compter_matchs(row_n1, cols_journees_n1)
+    ratio_n1 = matchs_n1 / len(cols_journees_n1) if len(cols_journees_n1) else 0.0
+    if ratio_n1 >= 0.20:
+        return False, None
+    if ratio_actuelle >= 0.20:
+        return False, None
+    return True, "Apparaissait rarement la saison passée (présomption N-1)"
+
+
 def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
     inject_style()
     separateur("TAILLE DE LA LIGUE")
@@ -331,17 +367,18 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
     #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
     mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
-    # 2. Apparaît très rarement (matchs_joues / journee_actuelle < 20%), uniquement
-    #    à partir de la journée 8 — même seuil calendaire que celui déjà utilisé
-    #    par le modèle hybride (poids_phase, plafond_calendaire=True). Avant J8,
-    #    l'échantillon est trop petit pour juger équitablement (un seul match
-    #    manqué en tout début de saison ne doit pas suffire à qualifier "à
-    #    éviter") : le critère ne s'applique simplement pas, le joueur retombe
-    #    sur les 2 autres critères ou Équilibre comme d'habitude.
-    if journee_actuelle >= 8:
-        mask_rarement = (df_mercato['Matchs_joues'] / journee_actuelle) < 0.20
-    else:
-        mask_rarement = pd.Series(False, index=df_mercato.index)
+    # 2. Apparaît très rarement (matchs_joues / journee_actuelle < 20%), à partir
+    #    de la journée 8 — même seuil calendaire que celui déjà utilisé par le
+    #    modèle hybride (poids_phase, plafond_calendaire=True). Avant J8, repli
+    #    sur une présomption basée sur l'historique N-1 (cf. _rarement_apparition) :
+    #    aucun repli fabriqué en l'absence d'historique N-1 fiable.
+    rarement = df_mercato.apply(
+        lambda row: _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1),
+        axis=1, result_type='expand'
+    )
+    df_mercato['_rarement_flag'] = rarement[0]
+    df_mercato['_rarement_motif'] = rarement[1]
+    mask_rarement = df_mercato['_rarement_flag']
     # 3. Particulièrement mauvais pour son poste (Note_pct <= 15%), peu importe le
     #    prix — un joueur pas cher mais très en dessous de son poste reste un
     #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
@@ -527,8 +564,8 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                     "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
                     else "Cher + note décevante"
                 )
-            if journee_actuelle >= 8 and (row['Matchs_joues'] / journee_actuelle) < 0.20:
-                raisons.append("Apparaît très rarement")
+            if row['_rarement_flag']:
+                raisons.append(row['_rarement_motif'])
             if row['Note_pct'] <= 0.15:
                 raisons.append("Note très faible pour son poste")
             return " · ".join(raisons)
