@@ -201,7 +201,7 @@ def calculer_score_mercato(row, strategie):
 
 
 def _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1):
-    """Critère "Apparaît très rarement" de "À éviter" (point 2) : matchs_joues /
+    """Critère "Joue très peu" de "À éviter" (point 2) : matchs_joues /
     journee_actuelle < 20%, à partir de la journée 8 uniquement.
 
     Avant J8, l'échantillon de la saison en cours est trop petit pour juger
@@ -221,7 +221,7 @@ def _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1):
 
     if journee_actuelle >= 8:
         if ratio_actuelle < 0.20:
-            return True, "Apparaît très rarement"
+            return True, "Joue très peu"
         return False, None
 
     row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
@@ -233,7 +233,7 @@ def _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1):
         return False, None
     if ratio_actuelle >= 0.20:
         return False, None
-    return True, "Apparaissait rarement la saison passée (présomption N-1)"
+    return True, "Jouait très peu la saison passée (présomption N-1)"
 
 
 def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
@@ -367,7 +367,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
     #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
     mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
-    # 2. Apparaît très rarement (matchs_joues / journee_actuelle < 20%), à partir
+    # 2. Joue très peu (matchs_joues / journee_actuelle < 20%), à partir
     #    de la journée 8 — même seuil calendaire que celui déjà utilisé par le
     #    modèle hybride (poids_phase, plafond_calendaire=True). Avant J8, repli
     #    sur une présomption basée sur l'historique N-1 (cf. _rarement_apparition) :
@@ -541,6 +541,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                                ).rename(columns={
                                    'Enchere': 'Enchère moy.', 'Tension': 'Demande',
                                    'Matchs_joues': 'Matchs joués', 'ProbaBut': 'Proba but/arrêt',
+                                   '%Titu': '% Titu (sur matchs joués)',
                                }).reset_index(drop=True)
                 ),
                 unsafe_allow_html=True
@@ -575,7 +576,10 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
             _table_html(
                 df_eviter_affiche[['Joueur', 'Poste', 'Cote', 'Enchere', 'Tension',
                            'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
-                           ].rename(columns={'Enchere': 'Enchère moy.', 'Tension': 'Demande', 'Matchs_joues': 'Matchs joués'}).reset_index(drop=True)
+                           ].rename(columns={
+                               'Enchere': 'Enchère moy.', 'Tension': 'Demande', 'Matchs_joues': 'Matchs joués',
+                               '%Titu': '% Titu (sur matchs joués)',
+                           }).reset_index(drop=True)
             ),
             unsafe_allow_html=True
         )
@@ -606,6 +610,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                                 ].rename(columns={
                                     'Enchere': 'Enchère moy.', 'Tension': 'Demande',
                                     'Matchs_joues': 'Matchs joués', 'ProbaBut': nom_colonne_proba,
+                                    '%Titu': '% Titu (sur matchs joués)',
                                 }).reset_index(drop=True)
                         ),
                         unsafe_allow_html=True
