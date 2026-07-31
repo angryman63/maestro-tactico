@@ -331,14 +331,22 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
     #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
     mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
-    # 2. Ne joue quasiment jamais (%Titu <= 10%) — inutile d'aligner un joueur qui
-    #    ne sera presque jamais titulaire, quel que soit son prix ou sa note.
-    mask_jamais_titulaire = df_mercato['%Titu'] <= 10
+    # 2. Apparaît très rarement (matchs_joues / journee_actuelle < 20%), uniquement
+    #    à partir de la journée 8 — même seuil calendaire que celui déjà utilisé
+    #    par le modèle hybride (poids_phase, plafond_calendaire=True). Avant J8,
+    #    l'échantillon est trop petit pour juger équitablement (un seul match
+    #    manqué en tout début de saison ne doit pas suffire à qualifier "à
+    #    éviter") : le critère ne s'applique simplement pas, le joueur retombe
+    #    sur les 2 autres critères ou Équilibre comme d'habitude.
+    if journee_actuelle >= 8:
+        mask_rarement = (df_mercato['Matchs_joues'] / journee_actuelle) < 0.20
+    else:
+        mask_rarement = pd.Series(False, index=df_mercato.index)
     # 3. Particulièrement mauvais pour son poste (Note_pct <= 15%), peu importe le
     #    prix — un joueur pas cher mais très en dessous de son poste reste un
     #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
     mask_note_tres_faible = df_mercato['Note_pct'] <= 0.15
-    mask_eviter = mask_cher_decevant | mask_jamais_titulaire | mask_note_tres_faible
+    mask_eviter = mask_cher_decevant | mask_rarement | mask_note_tres_faible
     df_eviter = df_mercato[mask_eviter].copy()
 
     # --- ProbaBut / ProbaArret (point 1) : Monte Carlo face aux moyennes de ligne de la ligue ---
@@ -511,7 +519,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
 
         def _raison_eviter(row):
             # Les 3 critères sont indépendants (OU) : un joueur peut en cumuler
-            # plusieurs (ex. cher+décevant ET ne joue jamais) — toutes les
+            # plusieurs (ex. cher+décevant ET apparaît rarement) — toutes les
             # raisons qui s'appliquent sont listées, pas seulement la première.
             raisons = []
             if row['Cote_pct'] > 0.60 and row['Note_pct'] < 0.50:
@@ -519,8 +527,8 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                     "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
                     else "Cher + note décevante"
                 )
-            if row['%Titu'] <= 10:
-                raisons.append("Ne joue quasiment jamais")
+            if journee_actuelle >= 8 and (row['Matchs_joues'] / journee_actuelle) < 0.20:
+                raisons.append("Apparaît très rarement")
             if row['Note_pct'] <= 0.15:
                 raisons.append("Note très faible pour son poste")
             return " · ".join(raisons)
