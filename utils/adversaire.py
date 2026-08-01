@@ -1,10 +1,60 @@
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
-from modele import (get_joueur_info, poste_vers_ligne, trouver_historique_n1,
+from modele import (get_joueur_info, chercher_lignes_joueur, poste_vers_ligne, trouver_historique_n1,
                     stabiliser_stats_proba_but, calculer_repli_stabilisation,
                     monte_carlo_match, get_stats_joueur_mc, calculer_contexte_ligue)
 from utils.table_style import inject_style, pill, escape, separateur
+
+_MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
+
+
+def _analyser_lignes_joueurs(texte, df, exiger_onze):
+    """Analyse les lignes saisies dans un champ Titulaires/Remplaçants de Simuler le match —
+    adapté de app.py::_verifier_noms_joueurs (même standard normaliser_accents), mais avec un
+    verdict par ligne à 3 états stricts (introuvable / ambigu / ok) : contrairement à
+    Mercato/Hebdo, Simuler le match doit résoudre CHAQUE ligne à un joueur UNIQUE (impossible de
+    simuler un match avec un joueur "peut-être Untel, peut-être Untel bis"). Accepte la syntaxe
+    "Nom (Club)" pour lever une ambiguïté (ex. "Diallo (Metz)" — 4 joueurs différents s'appellent
+    Diallo dans les données : Metz, Nice, Strasbourg, Lens).
+    Retourne (ok, lignes_ok, messages) où lignes_ok est la liste des (nom_exact, club_exact)
+    résolus sans ambiguïté (à utiliser tel quel pour construire l'équipe, sans reparser le
+    texte), et ok signifie "aucune erreur ET (pas d'exigence de 11 OU exactement 11)"."""
+    lignes = [l.strip() for l in texte.split('\n') if l.strip()]
+    lignes_ok = []
+    messages = []
+    for ligne in lignes:
+        m = _MOTIF_NOM_CLUB.match(ligne)
+        nom, club = (m.group(1).strip(), m.group(2).strip()) if m else (ligne, None)
+        candidats = chercher_lignes_joueur(nom, df, club)
+        if len(candidats) == 0:
+            messages.append(('error', f"« {ligne} » introuvable dans les données."))
+        elif len(candidats) > 1:
+            clubs = candidats['Club'].unique().tolist()
+            messages.append((
+                'error',
+                f"« {ligne} » est ambigu ({len(candidats)} joueurs correspondent : "
+                f"{', '.join(clubs)}) — précisez le club, ex. « {nom} ({clubs[0]}) »."
+            ))
+        else:
+            row = candidats.iloc[0]
+            lignes_ok.append((row['Joueur'], row['Club']))
+    ok = len(messages) == 0 and (not exiger_onze or len(lignes_ok) == 11)
+    return ok, lignes_ok, messages
+
+
+def _afficher_messages_effectif(label, lignes_ok, messages, exiger_onze):
+    for niveau, texte in messages:
+        getattr(st, niveau)(f"{label} — {texte}")
+    if not exiger_onze:
+        return
+    if len(lignes_ok) == 11 and not messages:
+        return
+    if not lignes_ok and not messages:
+        st.caption(f"{label} — en attente de saisie (0/11).")
+    else:
+        st.error(f"{label} — {len(lignes_ok)}/11 titulaires reconnus (il en faut exactement 11).")
 
 def _joueur_vers_mc(j, ligne, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
                      moyenne_mediane_poste, moyenne_repli_global,
@@ -206,6 +256,28 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
     noms_mes_titu = [n.strip() for n in mes_titu.split('\n') if n.strip()]
     noms_mes_rempl = [n.strip() for n in mes_remplacants.split('\n') if n.strip()]
 
+    # Vérification des effectifs — bloque le lancement de la simulation tant que
+    # les Titulaires ne sont pas EXACTEMENT 11 joueurs reconnus sans ambiguïté de
+    # chaque côté requis (Mon équipe toujours ; Équipe adverse seulement en mode
+    # "Analyse précise", la seule où elle a un onze fixe — le pool "Analyse
+    # préventive" a une sémantique différente, alimenté par meilleure_compo(),
+    # et n'est pas concerné par cette exigence). Les Remplaçants reçoivent la même
+    # détection introuvable/ambigu (messages informatifs) mais ne bloquent jamais
+    # le bouton — seuls les points 1 et 2 de la demande visent les Titulaires.
+    ok_moi, lignes_ok_moi, messages_moi = _analyser_lignes_joueurs(mes_titu, df, exiger_onze=True)
+    _afficher_messages_effectif("Mon équipe (titulaires)", lignes_ok_moi, messages_moi, exiger_onze=True)
+    if noms_mes_rempl:
+        _, _, messages_moi_rempl = _analyser_lignes_joueurs(mes_remplacants, df, exiger_onze=False)
+        _afficher_messages_effectif("Mon équipe (remplaçants)", [], messages_moi_rempl, exiger_onze=False)
+
+    ok_adv, lignes_ok_adv = True, []
+    if "précise" in mode_analyse:
+        ok_adv, lignes_ok_adv, messages_adv = _analyser_lignes_joueurs(adv_titu, df, exiger_onze=True)
+        _afficher_messages_effectif("Équipe adverse (titulaires)", lignes_ok_adv, messages_adv, exiger_onze=True)
+        if adv_remplacants.strip():
+            _, _, messages_adv_rempl = _analyser_lignes_joueurs(adv_remplacants, df, exiger_onze=False)
+            _afficher_messages_effectif("Équipe adverse (remplaçants)", [], messages_adv_rempl, exiger_onze=False)
+
     with st.expander("Configurer les remplacements"):
         if not noms_mes_titu:
             st.caption("Renseignez d'abord vos titulaires ci-dessus.")
@@ -300,15 +372,22 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         label_visibility="collapsed"
     ) == "Domicile"
 
-    if st.button("Lancer la simulation", type="primary"):
+    if st.button("Lancer la simulation", type="primary", disabled=not (ok_moi and ok_adv)):
 
-        def construire_equipe_noms(noms_titu):
+        # Construction à partir des lignes déjà résolues par _analyser_lignes_joueurs
+        # ci-dessus (nom exact + club exact), PAS en reparsant le texte brut : le
+        # bouton n'est cliquable que si ok_moi/ok_adv valent True, donc ces lignes
+        # sont garanties 11/11 et non-ambiguës — réutiliser le club déjà déterminé
+        # (via get_joueur_info(..., club=...)) assure que la simulation porte
+        # exactement sur le même joueur que celui confirmé par la vérification,
+        # plutôt que de redéclencher un homonyme non résolu.
+        def construire_equipe_depuis_lignes_ok(lignes_ok):
             titu_info = []
             non_trouves = []
-            for nom in [n.strip() for n in noms_titu.split('\n') if n.strip()]:
+            for nom, club in lignes_ok:
                 info = get_joueur_info(
                     nom, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
-                    moyennes_lignes, notes_mediane_poste, buts_mediane_poste
+                    moyennes_lignes, notes_mediane_poste, buts_mediane_poste, club=club
                 )
                 if info:
                     titu_info.append(info)
@@ -317,7 +396,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             return titu_info, non_trouves
 
         # Mon équipe
-        titu_moi, non_trouves_moi = construire_equipe_noms(mes_titu)
+        titu_moi, non_trouves_moi = construire_equipe_depuis_lignes_ok(lignes_ok_moi)
         equipe_moi = {'GB': [], 'DEF': [], 'MIL': [], 'ATT': []}
         for j in titu_moi:
             equipe_moi[poste_vers_ligne(j['poste'])].append(j)
@@ -325,7 +404,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         # Équipe adverse
         non_trouves_adv = []
         if "précise" in mode_analyse:
-            titu_adv, non_trouves_adv = construire_equipe_noms(adv_titu)
+            titu_adv, non_trouves_adv = construire_equipe_depuis_lignes_ok(lignes_ok_adv)
             equipe_adv = {'GB': [], 'DEF': [], 'MIL': [], 'ATT': []}
             for j in titu_adv:
                 equipe_adv[poste_vers_ligne(j['poste'])].append(j)

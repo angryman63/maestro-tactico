@@ -448,9 +448,27 @@ def calculer_contexte_ligue(df, cols_journees):
     buts_mediane_poste = {poste: np.median(vals) for poste, vals in buts_par_match_par_poste.items()}
     return moyennes_lignes, notes_mediane_poste, buts_mediane_poste
 
+def chercher_lignes_joueur(nom_joueur, df, club=None):
+    """Cherche les lignes de df dont 'Joueur' correspond à nom_joueur, en tolérant accents/casse
+    (normaliser_accents, même standard que Mercato/Hebdo) — et, si club est fourni, restreint
+    aux lignes de ce club (même tolérance accents/casse), pour lever un homonyme (ex. "Diallo"
+    correspond à 4 joueurs réels : Metz, Nice, Strasbourg, Lens). Retourne un DataFrame de 0, 1
+    ou plusieurs lignes : ne tranche JAMAIS silencieusement un homonyme, à l'appelant de décider
+    (get_joueur_info garde l'ancien comportement de compatibilité — 1ère ligne — pour tous les
+    appels existants ; Simuler le match, lui, bloque tant que ce n'est pas exactement 1 ligne)."""
+    noms_normalises = df['Joueur'].apply(lambda n: normaliser_accents(str(n)).strip().lower())
+    nom_norm = normaliser_accents(nom_joueur).strip().lower()
+    lignes = df[noms_normalises == nom_norm]
+    if club is not None and len(lignes) > 0:
+        club_norm = normaliser_accents(club).strip().lower()
+        clubs_normalises = lignes['Club'].apply(lambda c: normaliser_accents(str(c)).strip().lower())
+        lignes = lignes[clubs_normalises == club_norm]
+    return lignes
+
+
 def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, journee_actuelle=999,
-                     moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None):
-    row = df[df['Joueur'].str.lower() == nom_joueur.strip().lower()]
+                     moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None, club=None):
+    row = chercher_lignes_joueur(nom_joueur, df, club)
     if len(row) == 0:
         return None
     row = row.iloc[0]
