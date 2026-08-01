@@ -3,7 +3,7 @@ import pandas as pd
 from modele import (
     nettoyer_note, calculer_clutch, predire_note, alerte_blessure, etiquette_regularite,
     absences_consecutives, predire_note_hybride, get_bandeau_avertissement, trouver_historique_n1,
-    compter_matchs, poids_phase, taux_regularite, normaliser_accents,
+    compter_matchs, poids_phase, taux_regularite, normaliser_accents, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -185,12 +185,13 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
 
     df_mes_joueurs = df_scores.copy()
     if filtrer and mes_joueurs_input.strip():
-        # Comparaison normalisée (accents + casse), cohérente avec la validation
-        # au clic sur "Valider" (app.py::_verifier_noms_joueurs) : sans quoi un
-        # nom tapé sans accent (ex. "Said" au lieu de "Saïd") était validé comme
-        # trouvé mais silencieusement absent du filtre "Mes joueurs" ci-dessous.
-        mes_joueurs = [normaliser_accents(j.strip()).lower() for j in mes_joueurs_input.split('\n') if j.strip()]
-        noms_normalises = df_scores['Joueur'].apply(lambda n: normaliser_accents(str(n)).lower())
+        # Comparaison normalisée (accents + casse + séparateurs), cohérente avec la
+        # validation au clic sur "Valider" (app.py::_verifier_noms_joueurs) : sans
+        # quoi un nom tapé sans accent (ex. "Said" au lieu de "Saïd") ou avec le
+        # mauvais séparateur (ex. "Saint Maximin" au lieu de "Saint-Maximin") était
+        # validé comme trouvé mais silencieusement absent du filtre "Mes joueurs".
+        mes_joueurs = [normaliser_recherche(j) for j in mes_joueurs_input.split('\n') if j.strip()]
+        noms_normalises = df_scores['Joueur'].apply(normaliser_recherche)
         df_mes_joueurs = df_scores[noms_normalises.isin(mes_joueurs)]
 
     with st.expander("🏥 Légende blessures"):

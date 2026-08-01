@@ -4,7 +4,7 @@ import numpy as np
 from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
-    taux_regularite, stabiliser_note_saison, stabiliser_stats_proba_but, normaliser_accents,
+    taux_regularite, stabiliser_note_saison, stabiliser_stats_proba_but, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -551,11 +551,13 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         # joueur précis. La colonne Catégorie indique où il apparaît réellement
         # (un même nom peut correspondre à plusieurs joueurs différents, dans
         # des catégories/postes distincts — chacun listé sur sa propre ligne).
-        # Comparaison normalisée (accents + casse) : sans quoi un nom tapé sans
-        # accent (ex. "Said" au lieu de "Saïd") ne trouverait rien, alors que
-        # str.contains(case=False) ne gère que la casse, pas les accents.
-        noms_normalises = df_mercato['Joueur'].apply(lambda n: normaliser_accents(str(n)).lower())
-        recherche_normalisee = normaliser_accents(recherche_joueur).lower()
+        # Comparaison normalisée (accents + casse + séparateurs) : sans quoi un nom
+        # tapé sans accent (ex. "Said" au lieu de "Saïd") ne trouverait rien, alors
+        # que str.contains(case=False) ne gère que la casse, pas les accents — et un
+        # nom composé tapé avec le mauvais séparateur (ex. "Saint Maximin" ou
+        # "SaintMaximin" au lieu de "Saint-Maximin") ne trouverait rien non plus.
+        noms_normalises = df_mercato['Joueur'].apply(normaliser_recherche)
+        recherche_normalisee = normaliser_recherche(recherche_joueur)
         resultats = df_mercato[
             noms_normalises.str.contains(recherche_normalisee, na=False, regex=False)
         ].copy()

@@ -12,7 +12,8 @@ _MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
 
 def _analyser_lignes_joueurs(texte, df, exiger_onze):
     """Analyse les lignes saisies dans un champ Titulaires/Remplaçants de Simuler le match —
-    adapté de app.py::_verifier_noms_joueurs (même standard normaliser_accents), mais avec un
+    adapté de app.py::_verifier_noms_joueurs (même standard normaliser_recherche, via
+    chercher_lignes_joueur), mais avec un
     verdict par ligne à 3 états stricts (introuvable / ambigu / ok) : contrairement à
     Mercato/Hebdo, Simuler le match doit résoudre CHAQUE ligne à un joueur UNIQUE (impossible de
     simuler un match avec un joueur "peut-être Untel, peut-être Untel bis"). Accepte la syntaxe

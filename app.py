@@ -10,7 +10,7 @@ import time
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from modele import (
-    nettoyer_note, determiner_journee_actuelle, normaliser_accents,
+    nettoyer_note, determiner_journee_actuelle, normaliser_recherche,
     trouver_historique_n1, predire_note_hybride,
 )
 from utils.accueil import afficher_accueil
@@ -336,10 +336,10 @@ def _verifier_noms_joueurs(lignes, df, df_n1, cols_journees, cols_journees_n1, j
     - nom trouvé et éligible -> confirmation discrète.
     Un nom homonyme (plusieurs joueurs réels, ex. postes/clubs différents)
     produit un message par joueur réel trouvé, pas un seul verdict global."""
-    noms_normalises = df['Joueur'].apply(lambda n: normaliser_accents(str(n)).lower().strip())
+    noms_normalises = df['Joueur'].apply(normaliser_recherche)
     resultats = []
     for ligne in lignes:
-        ligne_norm = normaliser_accents(ligne).lower().strip()
+        ligne_norm = normaliser_recherche(ligne)
         if not ligne_norm:
             continue
         lignes_exactes = df[noms_normalises == ligne_norm]
