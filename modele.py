@@ -36,16 +36,24 @@ def normaliser_accents(texte):
 def normaliser_recherche(texte):
     """Normalise un nom pour une comparaison de CORRESPONDANCE (recherche/filtre/
     désambiguïsation) tolérante aux accents ET aux séparateurs : en plus de
-    normaliser_accents(), retire espaces et tirets des deux côtés de la comparaison —
-    "Saint-Maximin", "Saint Maximin" et "SaintMaximin" doivent être reconnus comme un
-    seul et même nom, quel que soit le séparateur tapé par l'utilisateur (l'export
-    MPGStats lui-même n'est pas toujours cohérent : certains noms composés utilisent un
-    tiret, d'autres un espace, ex. "Zaïre-Emery" vs "Nuno Mendes"). Volontairement
-    DISTINCTE de normaliser_accents() : cette dernière sert aussi de clé de TRI
-    alphabétique (utils/hebdo.py::_cle_tri) où retirer les séparateurs changerait
-    l'ordre d'affichage — seule la comparaison de correspondance doit ignorer le
-    séparateur, jamais le tri."""
-    return normaliser_accents(texte).lower().strip().replace('-', '').replace(' ', '')
+    normaliser_accents(), retire espaces, tirets et apostrophes (droite ' ou courbe ’,
+    équivalentes) des deux côtés de la comparaison — "Saint-Maximin", "Saint Maximin" et
+    "SaintMaximin" doivent être reconnus comme un seul et même nom, quel que soit le
+    séparateur tapé par l'utilisateur (l'export MPGStats lui-même n'est pas toujours
+    cohérent : certains noms composés utilisent un tiret, d'autres un espace, ex.
+    "Zaïre-Emery" vs "Nuno Mendes"). L'apostrophe est ajoutée à titre préventif : aucun
+    joueur actuel n'en a dans son nom, mais un futur "N'Diaye" ou "M'Bappé" tapé avec
+    l'apostrophe droite du clavier alors que la donnée source utilise la courbe (ou
+    l'inverse) ne doit pas se retrouver introuvable, même logique que
+    CORRESPONDANCE_MANUELLE_ACCENTS plus haut. Volontairement DISTINCTE de
+    normaliser_accents() : cette dernière sert aussi de clé de TRI alphabétique
+    (utils/hebdo.py::_cle_tri) où retirer ces caractères changerait l'ordre
+    d'affichage — seule la comparaison de correspondance doit les ignorer, jamais le
+    tri."""
+    return (
+        normaliser_accents(texte).lower().strip()
+        .replace('-', '').replace(' ', '').replace("'", '').replace('’', '')
+    )
 
 def nettoyer_note(valeur):
     if pd.isna(valeur):
