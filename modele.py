@@ -3,12 +3,33 @@ import unicodedata
 import pandas as pd
 import numpy as np
 
+# Lettres qui ne sont PAS des combinaisons lettre+diacritique combinant au
+# sens Unicode, mais des caractères à part entière : unicodedata.normalize
+# ('NFKD', ...) ne les décompose donc jamais (contrairement à é, ï, ñ, ć, ń,
+# ý, š... qui restent gérés par la décomposition Unicode standard plus bas,
+# inchangée). Traitées manuellement, EN PLUS de cette décomposition — pas à
+# sa place. Complète au besoin si d'autres lettres de ce type apparaissent
+# dans de futures données (un futur cas = une ligne ici).
+CORRESPONDANCE_MANUELLE_ACCENTS = {
+    'ø': 'o', 'Ø': 'O',
+    'ł': 'l', 'Ł': 'L',
+    'đ': 'd', 'Đ': 'D',
+    'ß': 'ss',
+}
+
 def normaliser_accents(texte):
     """Retire les accents pour une comparaison alphabétique/textuelle correcte
     (sans quoi 'É', 'À'... se comparent par leur code Unicode et finissent
-    après 'Z', ou ne matchent pas un texte saisi sans accent)."""
+    après 'Z', ou ne matchent pas un texte saisi sans accent). Deux étapes :
+    1) CORRESPONDANCE_MANUELLE_ACCENTS pour les lettres non décomposables
+       automatiquement (ø, ł, đ, ß...) ;
+    2) la décomposition Unicode standard (inchangée) pour tous les autres
+       accents."""
+    texte = str(texte)
+    for original, remplacement in CORRESPONDANCE_MANUELLE_ACCENTS.items():
+        texte = texte.replace(original, remplacement)
     return ''.join(
-        c for c in unicodedata.normalize('NFKD', str(texte))
+        c for c in unicodedata.normalize('NFKD', texte)
         if not unicodedata.combining(c)
     )
 
