@@ -16,6 +16,12 @@ CORRECTIONS_NOMS = {
     # (re)transcrire ce nom sans accent — corrigé automatiquement si le cas
     # se présente, sans nécessiter de nouvelle intervention.
     "Joao Neves": "João Neves",
+    # Vérifiées via Wikipédia :
+    "Hrádecky": "Hrádecký",      # Lukáš Hrádecký (Monaco)
+    "Sulc": "Šulc",              # Pavel Šulc (Lyon)
+    "Bulatovic": "Bulatović",    # Bulatović (Lens)
+    "Radakovic": "Radaković",    # Radaković (Nantes)
+    "Szymanski": "Szymański",    # Szymański (Rennes)
 }
 
 
