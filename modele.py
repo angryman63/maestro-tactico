@@ -33,6 +33,20 @@ def normaliser_accents(texte):
         if not unicodedata.combining(c)
     )
 
+def normaliser_recherche(texte):
+    """Normalise un nom pour une comparaison de CORRESPONDANCE (recherche/filtre/
+    désambiguïsation) tolérante aux accents ET aux séparateurs : en plus de
+    normaliser_accents(), retire espaces et tirets des deux côtés de la comparaison —
+    "Saint-Maximin", "Saint Maximin" et "SaintMaximin" doivent être reconnus comme un
+    seul et même nom, quel que soit le séparateur tapé par l'utilisateur (l'export
+    MPGStats lui-même n'est pas toujours cohérent : certains noms composés utilisent un
+    tiret, d'autres un espace, ex. "Zaïre-Emery" vs "Nuno Mendes"). Volontairement
+    DISTINCTE de normaliser_accents() : cette dernière sert aussi de clé de TRI
+    alphabétique (utils/hebdo.py::_cle_tri) où retirer les séparateurs changerait
+    l'ordre d'affichage — seule la comparaison de correspondance doit ignorer le
+    séparateur, jamais le tri."""
+    return normaliser_accents(texte).lower().strip().replace('-', '').replace(' ', '')
+
 def nettoyer_note(valeur):
     if pd.isna(valeur):
         return 0
@@ -450,18 +464,19 @@ def calculer_contexte_ligue(df, cols_journees):
 
 def chercher_lignes_joueur(nom_joueur, df, club=None):
     """Cherche les lignes de df dont 'Joueur' correspond à nom_joueur, en tolérant accents/casse
-    (normaliser_accents, même standard que Mercato/Hebdo) — et, si club est fourni, restreint
-    aux lignes de ce club (même tolérance accents/casse), pour lever un homonyme (ex. "Diallo"
-    correspond à 4 joueurs réels : Metz, Nice, Strasbourg, Lens). Retourne un DataFrame de 0, 1
-    ou plusieurs lignes : ne tranche JAMAIS silencieusement un homonyme, à l'appelant de décider
+    ET séparateurs (normaliser_recherche, même standard que Mercato/Hebdo — "Saint-Maximin",
+    "Saint Maximin" et "SaintMaximin" sont équivalents) — et, si club est fourni, restreint
+    aux lignes de ce club (même tolérance), pour lever un homonyme (ex. "Diallo" correspond à
+    4 joueurs réels : Metz, Nice, Strasbourg, Lens). Retourne un DataFrame de 0, 1 ou plusieurs
+    lignes : ne tranche JAMAIS silencieusement un homonyme, à l'appelant de décider
     (get_joueur_info garde l'ancien comportement de compatibilité — 1ère ligne — pour tous les
     appels existants ; Simuler le match, lui, bloque tant que ce n'est pas exactement 1 ligne)."""
-    noms_normalises = df['Joueur'].apply(lambda n: normaliser_accents(str(n)).strip().lower())
-    nom_norm = normaliser_accents(nom_joueur).strip().lower()
+    noms_normalises = df['Joueur'].apply(normaliser_recherche)
+    nom_norm = normaliser_recherche(nom_joueur)
     lignes = df[noms_normalises == nom_norm]
     if club is not None and len(lignes) > 0:
-        club_norm = normaliser_accents(club).strip().lower()
-        clubs_normalises = lignes['Club'].apply(lambda c: normaliser_accents(str(c)).strip().lower())
+        club_norm = normaliser_recherche(club)
+        clubs_normalises = lignes['Club'].apply(normaliser_recherche)
         lignes = lignes[clubs_normalises == club_norm]
     return lignes
 
@@ -653,14 +668,15 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
 
     # Remplacements configurés par l'utilisateur (mon équipe uniquement) :
     # {nom du titulaire -> {'seuil': ..., 'remplacant': {'nom','ligne','moyenne','ecart_type','buts'}}}
-    # Clé normalisée (accents/casse/espaces) : le nom du titulaire vient tel que
+    # Clé normalisée (accents/casse/séparateurs) : le nom du titulaire vient tel que
     # saisi par l'utilisateur (regle['titulaire']), alors que j['nom'] est le nom
-    # canonique du dataframe (get_joueur_info) — une différence de casse ou
-    # d'accent entre les deux (ex. "Dembele" saisi vs "Dembélé" en base) ferait
-    # sinon échouer la correspondance silencieusement, sans jamais déclencher le
-    # remplacement même si la note tirée passe sous le seuil.
+    # canonique du dataframe (get_joueur_info) — une différence de casse, d'accent
+    # ou de séparateur entre les deux (ex. "Dembele" saisi vs "Dembélé" en base, ou
+    # "Zaire Emery" vs "Zaïre-Emery") ferait sinon échouer la correspondance
+    # silencieusement, sans jamais déclencher le remplacement même si la note tirée
+    # passe sous le seuil.
     def _cle_nom(nom):
-        return normaliser_accents(str(nom)).strip().lower()
+        return normaliser_recherche(nom)
 
     regles_par_titulaire = {_cle_nom(r['titulaire']): r for r in (regles_remplacement or [])}
 
