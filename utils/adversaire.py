@@ -390,6 +390,16 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
 
         bonus_adv_key = bonus_key_map.get(bonus_adv_estime, None)
 
+        # Nombres aléatoires communs (réduction de variance) : la simulation de
+        # référence et chaque simulation "avec bonus" ci-dessous partagent la
+        # même graine — les DEUX tirent alors exactement les mêmes notes/buts
+        # avant application du bonus, si bien que toute différence observée
+        # reflète uniquement l'effet mécanique du bonus, jamais du bruit
+        # d'échantillonnage entre deux séries de tirages indépendantes (ce qui
+        # pouvait faire apparaître un gain négatif sur un bonus qui ne peut
+        # mécaniquement jamais nuire, ex. Suarez, Valise à Nanard).
+        seed_commun = int(np.random.randint(0, 2**31 - 1))
+
         # Simulation sans bonus (le Capitaine, structurel, reste actif même ici)
         with st.spinner("Simulation en cours (2000 scénarios)..."):
             res_sb = monte_carlo_match(
@@ -397,7 +407,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 regles_remplacement=regles_remplacement_mc,
                 capitaine=capitaine_actif,
                 n_simulations=2000,
-                domicile=domicile
+                domicile=domicile,
+                seed=seed_commun
             )
 
         separateur("RÉSULTAT")
@@ -467,7 +478,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                         regles_remplacement=regles_remplacement_mc,
                         capitaine=capitaine_actif,
                         domicile=domicile,
-                        joueur_uber=(None if conflit_capitaine_uber else joueur_uber)
+                        joueur_uber=(None if conflit_capitaine_uber else joueur_uber),
+                        seed=seed_commun
                     )
                     resultats_bonus[bonus] = res_b
 
@@ -555,6 +567,10 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             st.warning("**L'adversaire a le Miroir !** — Si vous utilisez un bonus, il peut le retourner contre vous !")
 
         separateur("DÉTAILS DES ÉQUIPES")
+        st.caption(
+            "Notes de base, hors bonus — calculées une seule fois avant simulation, "
+            "elles ne varient donc pas selon le bonus sélectionné ci-dessus."
+        )
         col_eq1, col_eq2 = st.columns(2)
 
         with col_eq1:
