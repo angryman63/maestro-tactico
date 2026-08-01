@@ -589,7 +589,17 @@ def bonus_dispositif_def(nb_defenseurs):
 def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
                       bonus_moi=None, bonus_adv=None,
                       domicile=True, joueur_uber=None,
-                      regles_remplacement=None, capitaine=None):
+                      regles_remplacement=None, capitaine=None, seed=None):
+    """seed : nombres aléatoires communs (variance reduction) — appeler avec la
+    même graine pour la simulation de référence et chaque simulation "avec
+    bonus" d'un même match garantit que les DEUX tirent exactement les mêmes
+    notes/buts avant application du bonus (l'ordre des tirages ne dépend que
+    des joueurs et de n_simulations, jamais du bonus lui-même, qui n'intervient
+    qu'après). Toute différence observée entre les deux résultats reflète alors
+    uniquement l'effet mécanique du bonus, jamais du bruit d'échantillonnage
+    entre deux séries de tirages indépendantes. seed=None (par défaut) conserve
+    le comportement précédent (tirages indépendants à chaque appel)."""
+    rng = np.random.default_rng(seed)
     victoires = 0
     nuls = 0
     defaites = 0
@@ -618,7 +628,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
     for _ in range(n_simulations):
         notes_moi = {}
         for j in joueurs_moi:
-            note = np.random.normal(j['moyenne'], j['ecart_type'])
+            note = rng.normal(j['moyenne'], j['ecart_type'])
             note = max(0, min(10, note))
             ligne, buts = j['ligne'], j['buts']
             substitue = False
@@ -626,7 +636,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
             regle = regles_par_titulaire.get(_cle_nom(j['nom']))
             if regle and note < regle['seuil']:
                 rempl = regle['remplacant']
-                note = np.random.normal(rempl['moyenne'], rempl['ecart_type'])
+                note = rng.normal(rempl['moyenne'], rempl['ecart_type'])
                 note = max(0, min(10, note))
                 ligne, buts = rempl['ligne'], rempl['buts']
                 substitue = True
@@ -638,7 +648,7 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
 
         notes_adv = {}
         for j in joueurs_adv:
-            note = np.random.normal(j['moyenne'], j['ecart_type'])
+            note = rng.normal(j['moyenne'], j['ecart_type'])
             note = max(0, min(10, note))
             if j['ligne'] == 'DEF':
                 note = min(10, note + bonus_def_adv)
@@ -706,9 +716,9 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
         # but MPG virtuel plus bas doit exclure un joueur seulement s'IL a réellement
         # marqué dans CETTE simulation précise, pas simplement parce que son taux
         # moyen de buts/match (j['buts']) est non nul.
-        buts_reels_moi = {nom: int(np.random.poisson(v['buts'])) if v['buts'] > 0 else 0
+        buts_reels_moi = {nom: int(rng.poisson(v['buts'])) if v['buts'] > 0 else 0
                           for nom, v in notes_moi.items()}
-        buts_reels_adv = {nom: int(np.random.poisson(v['buts'])) if v['buts'] > 0 else 0
+        buts_reels_adv = {nom: int(rng.poisson(v['buts'])) if v['buts'] > 0 else 0
                           for nom, v in notes_adv.items()}
         score_moi = sum(buts_reels_moi.values())
         score_adv = sum(buts_reels_adv.values())
