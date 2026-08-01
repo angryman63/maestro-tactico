@@ -236,15 +236,17 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
 
     with col_b1:
         st.subheader("Bonus disponibles")
-        mes_bonus_dispo = st.selectbox(
+        mes_bonus_dispo_liste = st.multiselect(
             "Bonus disponibles",
-            ["Aucun"] + liste_bonus,
+            liste_bonus,
             key="mes_bonus_dispo",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            help="Coche tous les bonus encore en réserve — chacun est testé séparément "
+                 "(jamais cumulés, un seul bonus utilisable par match en vrai MPG)."
         )
         joueur_uber = None
         conflit_capitaine_uber = False
-        if "Uber Eats" in mes_bonus_dispo:
+        if any("Uber Eats" in b for b in mes_bonus_dispo_liste):
             joueur_uber_choisi = st.selectbox(
                 "Joueur boosté par Uber Eats :",
                 ["Aucun"] + noms_mes_titu,
@@ -444,12 +446,18 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
 
         separateur("RECOMMANDATION MAESTRO TACTICO")
 
-        if mes_bonus_dispo != "Aucun":
-            st.markdown("**Impact du bonus sélectionné :**")
+        if mes_bonus_dispo_liste:
+            st.markdown("**Impact de vos bonus disponibles :**")
 
+            # Chaque bonus coché est testé SÉPARÉMENT (une simulation dédiée par
+            # bonus, bonus_moi=<un seul à la fois>) — jamais cumulés entre eux,
+            # conformément à la règle réelle MPG (un seul bonus utilisable par
+            # match). bonus_adv (l'estimation adverse) reste, lui, constant sur
+            # toutes ces simulations : c'est un contexte de match, pas un choix
+            # de l'utilisateur qui varie d'un test à l'autre.
             resultats_bonus = {}
             with st.spinner("Test des bonus en cours..."):
-                for bonus in [mes_bonus_dispo]:
+                for bonus in mes_bonus_dispo_liste:
                     bonus_key = bonus_key_map.get(bonus, None)
                     res_b = monte_carlo_match(
                         joueurs_moi_mc, joueurs_adv_mc,
@@ -463,18 +471,21 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                     )
                     resultats_bonus[bonus] = res_b
 
+            meilleur = max(resultats_bonus.items(), key=lambda x: x[1]['victoires'])
+            nom_meilleur = meilleur[0].split('—')[0].strip()
+            res_meilleur = meilleur[1]
+            gain_meilleur = round(res_meilleur['victoires'] - res_sb['victoires'], 1)
+
             # Mis en avant visuellement (st.metric, comme le résultat principal) au
-            # lieu d'un simple texte noyé dans la page — c'est le chiffre que
-            # l'utilisateur vient chercher dans cette section.
-            res_avec_bonus = resultats_bonus[mes_bonus_dispo]
-            gain_metric = round(res_avec_bonus['victoires'] - res_sb['victoires'], 1)
+            # lieu d'un simple texte noyé dans la page : le meilleur bonus parmi
+            # ceux cochés (jamais un cumul — chaque bonus a été testé seul ci-dessus).
             col_bonus1, col_bonus2 = st.columns(2)
             with col_bonus1:
                 st.metric("Victoire (sans bonus)", f"{res_sb['victoires']}%")
             with col_bonus2:
                 st.metric(
-                    "Victoire (avec bonus)", f"{res_avec_bonus['victoires']}%",
-                    delta=f"{gain_metric:+.1f} pts"
+                    f"Victoire (avec {nom_meilleur})", f"{res_meilleur['victoires']}%",
+                    delta=f"{gain_meilleur:+.1f} pts"
                 )
 
             for bonus, res in sorted(
@@ -497,9 +508,13 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                     f"Score: {res['score_moy_moi']}-{res['score_moy_adv']}"
                 )
 
-            meilleur = max(resultats_bonus.items(), key=lambda x: x[1]['victoires'])
-            nom_meilleur = meilleur[0].split('—')[0].strip()
-            res_meilleur = meilleur[1]
+            # Recommandation finale claire : reprend le seuil de significativité
+            # (+6 points) déjà utilisé plus bas dans la logique par palier de
+            # victoire — un seul des deux messages possibles, sans ambiguïté.
+            if gain_meilleur >= 6:
+                st.success(f"**Utilisez {nom_meilleur}** — le plus efficace parmi vos bonus disponibles !")
+            else:
+                st.info("Aucun de vos bonus ne change significativement le résultat.")
 
             vic = res_sb['victoires']
 
