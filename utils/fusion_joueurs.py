@@ -2,6 +2,30 @@ import pandas as pd
 
 CLE_FUSION = ['Joueur', 'Poste', 'Club']
 
+# ---------------------------------------------------------------------------
+# Corrections de noms (accents/caractères mal transcrits par l'export
+# MPGStats) : appliquées automatiquement à chaque fusion hebdomadaire — PAS
+# une modification manuelle des fichiers sources, qui serait à refaire à
+# chaque nouvel export. Structure volontairement simple (un dict
+# nom_source -> nom_corrigé) pour qu'ajouter un futur cas soit trivial : une
+# seule ligne à ajouter ci-dessous, aucune autre modification de code requise.
+# Un nom absent de ce dict n'est jamais modifié (no-op).
+CORRECTIONS_NOMS = {
+    # Défensif : les exports actuellement disponibles fournissent déjà
+    # "João Neves" avec l'accent, mais un export MPGStats pourrait un jour
+    # (re)transcrire ce nom sans accent — corrigé automatiquement si le cas
+    # se présente, sans nécessiter de nouvelle intervention.
+    "Joao Neves": "João Neves",
+}
+
+
+def _corriger_noms(df):
+    """Applique CORRECTIONS_NOMS à la colonne 'Joueur' — remplace UNIQUEMENT
+    les noms présents dans le dict, aucun effet sur les autres (source déjà
+    correcte ou joueur non concerné)."""
+    df['Joueur'] = df['Joueur'].replace(CORRECTIONS_NOMS)
+    return df
+
 
 def _colonnes_specifiques(df, taille):
     """Colonnes propres à une taille de ligue, ex: 'Enchere moy/L6', '% achat T1/L6'..."""
@@ -39,6 +63,13 @@ def fusionner_fichiers_joueurs(fichier_6, fichier_8, fichier_10):
                 f"Le fichier « {nom} » ne contient pas les colonnes attendues : {manquantes}. "
                 f"Vérifie qu'il s'agit bien d'un export MPGStats standard."
             )
+        # Avant la vérification de clé unique et la fusion : si un export
+        # orthographie un nom différemment d'un fichier à l'autre (ex. "Joao
+        # Neves" dans l'un, "João Neves" dans un autre), la correction aligne
+        # les 3 fichiers AVANT la jointure sur Joueur+Poste+Club — sans quoi
+        # la fusion échouerait à rattacher les colonnes d'enchères de ce
+        # joueur (clé différente = pas de correspondance).
+        _corriger_noms(df)
         _verifier_cle_unique(df, nom)
 
     cols_8 = _colonnes_specifiques(df8, 8)
