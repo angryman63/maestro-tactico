@@ -150,11 +150,10 @@ div[data-testid="stButton"] button p {
     box-shadow: 0 0 0 2px rgba(200, 168, 75, 0.15);
 }
 
-/* ── Labels des champs à accent or (Simuler le match) : groupes en pilules + bonus adverse ── */
+/* ── Labels des champs à accent or (Simuler le match) : groupes en pilules ── */
 .st-key-mode_analyse label[data-testid="stWidgetLabel"] p,
 .st-key-domicile label[data-testid="stWidgetLabel"] p,
-.st-key-importance label[data-testid="stWidgetLabel"] p,
-.st-key-bonus_adv_estime label[data-testid="stWidgetLabel"] p {
+.st-key-importance label[data-testid="stWidgetLabel"] p {
     font-family: 'Oswald', sans-serif !important;
     font-weight: 600 !important;
     font-size: 1rem !important;
@@ -163,10 +162,11 @@ div[data-testid="stButton"] button p {
     color: #c8a84b !important;
 }
 
-/* ── Sous-titres h3 (Simuler le match) : équipes + bonus disponibles ── */
+/* ── Sous-titres h3 (Simuler le match) : équipes + bonus disponibles/adverse ── */
 h3#mon-equipe,
 h3#equipe-adverse,
-h3#bonus-disponibles {
+h3#bonus-disponibles,
+h3#bonus-adverse-estime {
     font-family: 'Oswald', sans-serif !important;
     font-weight: 700 !important;
     font-size: 1rem !important;

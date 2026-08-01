@@ -45,12 +45,19 @@ def _joueur_vers_mc(j, ligne, df, cols_journees, df_n1, cols_journees_n1, journe
 
 liste_bonus = [
     "💼 Valise à Nanard — annule 1 but adverse",
-    "🪞 Miroir — retourne le bonus adverse",
     "💃 Zahia — +0,5 à tous mes joueurs",
     "🦷 Suarez — -1 au gardien adverse",
-    "👊 Tonton Pat' — annule remplacements adverses",
     "💻 Cheat Code — -0.5 à tous joueurs adverses",
     "🍔 Uber Eats — +1 à un joueur choisi",
+]
+
+# Retirés des menus pour la bêta : sans aucun effet actuellement dans
+# monte_carlo_match (bonus_moi/bonus_adv == 'miroir'/'tonton' n'y est jamais
+# géré) — les laisser sélectionnables induirait l'utilisateur en erreur.
+# Remettre dans liste_bonus ci-dessus une fois leur logique implémentée.
+liste_bonus_non_implementes = [
+    "🪞 Miroir — retourne le bonus adverse",
+    "👊 Tonton Pat' — annule remplacements adverses",
 ]
 
 bonus_key_map = {
@@ -275,10 +282,12 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         )
 
     with col_b2:
+        st.subheader("Bonus adverse (estimé)")
         bonus_adv_estime = st.selectbox(
             "Bonus adverse (estimé)",
             ["Aucun"] + liste_bonus,
-            key="bonus_adv_estime"
+            key="bonus_adv_estime",
+            label_visibility="collapsed"
         )
 
     separateur("TERRAIN")
@@ -520,14 +529,14 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                     f"Score: {res['score_moy_moi']}-{res['score_moy_adv']}"
                 )
 
-            # Recommandation finale claire : reprend le seuil de significativité
-            # (+6 points) déjà utilisé plus bas dans la logique par palier de
-            # victoire — un seul des deux messages possibles, sans ambiguïté.
-            if gain_meilleur >= 6:
-                st.success(f"**Utilisez {nom_meilleur}** — le plus efficace parmi vos bonus disponibles !")
-            else:
-                st.info("Aucun de vos bonus ne change significativement le résultat.")
-
+            # Recommandation finale — UNE SEULE, par palier de victoire (vic),
+            # tenant compte de l'importance du match et du gain du meilleur
+            # bonus (seuil de significativité : +6 points). Avant ce correctif,
+            # un second bloc de recommandation générique (uniquement basé sur
+            # gain_meilleur >= 6, ignorant vic/importance) s'affichait EN PLUS
+            # de cette logique par palier, produisant deux messages simultanés
+            # qui pouvaient se contredire (ex. "Utilisez X" et "Gardez vos
+            # bonus" en même temps avec Importance = Normal/Sans enjeu).
             vic = res_sb['victoires']
 
             if vic >= 65:
