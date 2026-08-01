@@ -185,8 +185,13 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
 
     df_mes_joueurs = df_scores.copy()
     if filtrer and mes_joueurs_input.strip():
-        mes_joueurs = [j.strip().lower() for j in mes_joueurs_input.split('\n') if j.strip()]
-        df_mes_joueurs = df_scores[df_scores['Joueur'].str.lower().isin(mes_joueurs)]
+        # Comparaison normalisée (accents + casse), cohérente avec la validation
+        # au clic sur "Valider" (app.py::_verifier_noms_joueurs) : sans quoi un
+        # nom tapé sans accent (ex. "Said" au lieu de "Saïd") était validé comme
+        # trouvé mais silencieusement absent du filtre "Mes joueurs" ci-dessous.
+        mes_joueurs = [normaliser_accents(j.strip()).lower() for j in mes_joueurs_input.split('\n') if j.strip()]
+        noms_normalises = df_scores['Joueur'].apply(lambda n: normaliser_accents(str(n)).lower())
+        df_mes_joueurs = df_scores[noms_normalises.isin(mes_joueurs)]
 
     with st.expander("🏥 Légende blessures"):
         st.markdown("""
