@@ -606,12 +606,37 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             res_meilleur = meilleur[1]
             gain_meilleur = round(res_meilleur['victoires'] - res_sb['victoires'], 1)
 
+            # Référence "aucun bonus du tout" (ni le mien ni l'adverse) — même graine
+            # partagée que res_sb et resultats_bonus, pour que les 3 métriques ci-dessous
+            # soient directement comparables. Sans cette 3e valeur, un bonus qui annule
+            # presque exactement l'effet du bonus adverse (ex. Zahia contre Cheat Code)
+            # est indiscernable d'un bonus qui pousse juste vers le nul sans rien annuler
+            # (ex. Valise contre Valise) — les deux affichaient "gain positif vs res_sb"
+            # alors que leur situation par rapport à un match SANS AUCUN bonus est très
+            # différente. Visible d'un coup d'œil ici plutôt qu'à expliquer par du texte.
+            with st.spinner("Simulation en cours (2000 scénarios)..."):
+                res_aucun_bonus = monte_carlo_match(
+                    joueurs_moi_mc, joueurs_adv_mc,
+                    regles_remplacement=regles_remplacement_mc,
+                    capitaine=capitaine_actif,
+                    n_simulations=2000,
+                    domicile=domicile,
+                    seed=seed_commun
+                )
+            gain_adv_seul = round(res_sb['victoires'] - res_aucun_bonus['victoires'], 1)
+
             # Mis en avant visuellement (st.metric, comme le résultat principal) au
-            # lieu d'un simple texte noyé dans la page : le meilleur bonus parmi
-            # ceux cochés (jamais un cumul — chaque bonus a été testé seul ci-dessus).
-            col_bonus1, col_bonus2 = st.columns(2)
+            # lieu d'un simple texte noyé dans la page : 3 étapes côte à côte — aucun
+            # bonus, bonus adverse seul, bonus adverse + le mien (jamais un cumul de MES
+            # bonus entre eux — chaque bonus a été testé seul ci-dessus).
+            col_bonus0, col_bonus1, col_bonus2 = st.columns(3)
+            with col_bonus0:
+                st.metric("Victoire (aucun bonus)", f"{res_aucun_bonus['victoires']}%")
             with col_bonus1:
-                st.metric("Victoire (sans bonus)", f"{res_sb['victoires']}%")
+                st.metric(
+                    "Victoire (bonus adverse seul)", f"{res_sb['victoires']}%",
+                    delta=f"{gain_adv_seul:+.1f} pts"
+                )
             with col_bonus2:
                 st.metric(
                     f"Victoire (avec {nom_meilleur})", f"{res_meilleur['victoires']}%",
