@@ -118,7 +118,11 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     font-size: 0.95rem !important;
     letter-spacing: 0.06em !important;
     text-transform: uppercase !important;
-    padding: 0 24px !important;
+    /* Padding vertical : sans lui, le libellé (une simple ligne de texte, ~22px de
+       haut, contrairement à l'ancien st.tabs() bien plus haut) ne laisse aucune
+       place sous le texte pour la barre d'accent ci-dessous — elle traversait alors
+       les lettres au lieu de souligner proprement le libellé. */
+    padding: 10px 24px !important;
     border-radius: 8px !important;
     cursor: pointer !important;
     transition: color 0.25s ease, background-color 0.25s ease !important;
@@ -145,7 +149,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     position: absolute;
     left: 16px;
     right: 16px;
-    bottom: 4px;
+    bottom: 2px;
     height: 3px;
     border-radius: 3px;
     background-color: #c8a84b;
