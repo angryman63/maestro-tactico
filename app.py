@@ -95,12 +95,13 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     border-bottom: 1px solid #c8a84b44;
 }
 
-/* Onglets de navigation principaux (Accueil / Conseiller hebdo / Mercato / Simuler le match) */
-.st-key-nav_tabs .react-aria-SelectionIndicator {
-    display: none !important;
-}
-
-.st-key-nav_tabs > div > [role="tablist"] {
+/* Navigation principale (Accueil / Conseiller hebdo / Mercato / Simuler le match) —
+   st.radio (pas st.tabs) : seul un widget qui renvoie sa valeur sélectionnée à
+   Python permet de savoir quelle page est affichée (st.tabs ne le permet pas),
+   ce qui est nécessaire pour n'afficher la sidebar "Mes joueurs" que sur
+   Conseiller Hebdo. Stylé en pastilles pour reproduire visuellement l'ancienne
+   barre d'onglets. */
+.st-key-nav_radio [data-testid="stRadioGroup"] {
     background-color: #1a1a1a !important;
     border: 1px solid #2a2a2a !important;
     border-radius: 10px !important;
@@ -108,7 +109,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     gap: 6px !important;
 }
 
-.st-key-nav_tabs > div > [role="tablist"] > [data-testid="stTab"] {
+.st-key-nav_radio [data-testid="stRadioOption"] {
     position: relative !important;
     background-color: transparent !important;
     color: rgba(255, 255, 255, 0.62) !important;
@@ -119,22 +120,27 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     text-transform: uppercase !important;
     padding: 0 24px !important;
     border-radius: 8px !important;
-    border-bottom: none !important;
+    cursor: pointer !important;
     transition: color 0.25s ease, background-color 0.25s ease !important;
 }
 
-.st-key-nav_tabs > div > [role="tablist"] > [data-testid="stTab"]:hover {
+/* Masque le rond radio natif : seul le libellé (pastille pleine) reste visible */
+.st-key-nav_radio [data-testid="stRadioOption"] > div > div > div:first-child {
+    display: none !important;
+}
+
+.st-key-nav_radio [data-testid="stRadioOption"]:hover {
     color: rgba(255, 255, 255, 0.92) !important;
     background-color: #c8a84b14 !important;
 }
 
-.st-key-nav_tabs > div > [role="tablist"] > [data-testid="stTab"][aria-selected="true"] {
+.st-key-nav_radio [data-testid="stRadioOption"][data-selected="true"] {
     color: #c8a84b !important;
     background-color: #c8a84b22 !important;
     font-weight: 700 !important;
 }
 
-.st-key-nav_tabs > div > [role="tablist"] > [data-testid="stTab"][aria-selected="true"]::after {
+.st-key-nav_radio [data-testid="stRadioOption"][data-selected="true"]::after {
     content: "";
     position: absolute;
     left: 16px;
@@ -145,7 +151,7 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
     background-color: #c8a84b;
 }
 
-.st-key-nav_tabs > div > [role="tablist"] > [data-testid="stTab"] p {
+.st-key-nav_radio [data-testid="stRadioOption"] p {
     font-family: 'Oswald', sans-serif !important;
 }
 
@@ -235,10 +241,6 @@ LOGO_HTML = """
   <div style="font-family:'Oswald',sans-serif; font-weight:700; font-size:11px; color:#ffffff; letter-spacing:4px; opacity:0.9;">MAESTRO TACTICO</div>
 </div>
 """
-
-with st.sidebar:
-    st.markdown(LOGO_HTML, unsafe_allow_html=True)
-    st.markdown("---")
 
 # ============================================================
 # URL GITHUB — FICHIER JOUEURS FUSIONNÉ (saison en cours)
@@ -366,60 +368,31 @@ def _verifier_noms_joueurs(lignes, df, df_n1, cols_journees, cols_journees_n1, j
     return resultats
 
 
-with st.sidebar:
-    st.markdown(
-        '### Mes joueurs <span style="font-size:0.6em; opacity:0.5;">(un par ligne)</span>',
-        unsafe_allow_html=True
-    )
-
-    # Initialisation session state
-    if "mes_joueurs_input" not in st.session_state:
-        st.session_state["mes_joueurs_input"] = ""
-
-    mes_joueurs_input = st.text_area(
-        "Joueurs (un par ligne)",
-        value=st.session_state["mes_joueurs_input"],
-        height=150,
-        key="mes_joueurs_textarea",
-        label_visibility="collapsed"
-    )
-
-    if st.button("Valider", key="btn_valider_joueurs"):
-        st.session_state["mes_joueurs_input"] = st.session_state["mes_joueurs_textarea"]
-        lignes = [j.strip() for j in st.session_state["mes_joueurs_input"].split('\n') if j.strip()]
-        st.session_state["verification_mes_joueurs"] = _verifier_noms_joueurs(
-            lignes, df, df_n1, cols_journees, cols_journees_n1, journee_actuelle
-        )
-    else:
-        st.session_state["mes_joueurs_input"] = mes_joueurs_input
-
-    for niveau, texte in st.session_state.get("verification_mes_joueurs", []):
-        if niveau == 'success':
-            st.caption(f"✓ {texte}")
-        elif niveau == 'error':
-            st.error(texte)
-        elif niveau == 'warning':
-            st.warning(texte)
-        elif niveau == 'info':
-            st.info(texte)
-
-    filtrer = st.checkbox(
-        "Afficher uniquement mes joueurs", value=False, key="filtrer_mes_joueurs"
-    )
+def _afficher_pied_de_page():
+    """Pied de page (contact + mention RGPD) — identique au texte qui vivait dans
+    la sidebar, simplement déplacé en bas de la page principale sur les pages où
+    la sidebar "Mes joueurs" n'a plus de raison d'être affichée (voir plus bas)."""
     st.markdown("---")
     st.markdown(
-        "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); text-align:center;'>"
+        "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); "
+        "text-align:center; margin-top:8px;'>"
         "maestrotactico.fr<br>contact@maestrotactico.fr"
         "</div>"
         "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.65); "
-        "text-align:center; margin-top:18px;'>"
+        "text-align:center; margin-top:18px; padding-bottom:8px;'>"
         "Pas de cookies, pas de traçage — juste les infos techniques basiques que l'hébergeur garde par défaut."
         "</div>",
         unsafe_allow_html=True
     )
 
+
 # ============================================================
-# NAVIGATION — ONGLETS
+# NAVIGATION — rendue AVANT la sidebar : "Mes joueurs" n'a un effet réel que sur
+# Conseiller Hebdo (seule page qui reçoit mes_joueurs_input/filtrer), donc n'a de
+# sens à afficher que sur cette page — il faut connaître la page sélectionnée
+# pour décider quoi mettre dans la sidebar. st.radio (pas st.tabs, qui ne renvoie
+# jamais la sélection courante à Python) stylé en pastilles pour un rendu visuel
+# identique à l'ancienne barre d'onglets.
 # ============================================================
 
 st.markdown(
@@ -432,21 +405,102 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-page0, page1, page2, page3 = st.tabs([
-    "Accueil",
-    "Conseiller hebdo",
-    "Mercato",
-    "Simuler le match"
-], key="nav_tabs")
+page_selectionnee = st.radio(
+    "Navigation",
+    ["Accueil", "Conseiller hebdo", "Mercato", "Simuler le match"],
+    horizontal=True,
+    key="nav_radio",
+    label_visibility="collapsed"
+)
 
-with page0:
+# ============================================================
+# SIDEBAR — MES JOUEURS (Conseiller Hebdo uniquement — seule page où ce filtre a
+# un effet réel). Sur les 3 autres pages, la sidebar est masquée entièrement
+# (largeur rendue aux tableaux, notamment les tableaux denses de Mercato) ; le
+# logo reste visible via le bandeau haut ci-dessus, et le pied de page est
+# affiché en bas du contenu principal via _afficher_pied_de_page().
+# ============================================================
+
+filtrer = False
+
+if page_selectionnee == "Conseiller hebdo":
+    with st.sidebar:
+        st.markdown(LOGO_HTML, unsafe_allow_html=True)
+        st.markdown("---")
+        st.markdown(
+            '### Mes joueurs <span style="font-size:0.6em; opacity:0.5;">(un par ligne)</span>',
+            unsafe_allow_html=True
+        )
+
+        # Initialisation session state
+        if "mes_joueurs_input" not in st.session_state:
+            st.session_state["mes_joueurs_input"] = ""
+
+        mes_joueurs_input = st.text_area(
+            "Joueurs (un par ligne)",
+            value=st.session_state["mes_joueurs_input"],
+            height=150,
+            key="mes_joueurs_textarea",
+            label_visibility="collapsed"
+        )
+
+        if st.button("Valider", key="btn_valider_joueurs"):
+            st.session_state["mes_joueurs_input"] = st.session_state["mes_joueurs_textarea"]
+            lignes = [j.strip() for j in st.session_state["mes_joueurs_input"].split('\n') if j.strip()]
+            st.session_state["verification_mes_joueurs"] = _verifier_noms_joueurs(
+                lignes, df, df_n1, cols_journees, cols_journees_n1, journee_actuelle
+            )
+        else:
+            st.session_state["mes_joueurs_input"] = mes_joueurs_input
+
+        for niveau, texte in st.session_state.get("verification_mes_joueurs", []):
+            if niveau == 'success':
+                st.caption(f"✓ {texte}")
+            elif niveau == 'error':
+                st.error(texte)
+            elif niveau == 'warning':
+                st.warning(texte)
+            elif niveau == 'info':
+                st.info(texte)
+
+        filtrer = st.checkbox(
+            "Afficher uniquement mes joueurs", value=False, key="filtrer_mes_joueurs"
+        )
+        st.markdown("---")
+        st.markdown(
+            "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.55); text-align:center;'>"
+            "maestrotactico.fr<br>contact@maestrotactico.fr"
+            "</div>"
+            "<div style='font-family:Raleway,sans-serif; font-size:11px; color:rgba(255,255,255,0.65); "
+            "text-align:center; margin-top:18px;'>"
+            "Pas de cookies, pas de traçage — juste les infos techniques basiques que l'hébergeur garde par défaut."
+            "</div>",
+            unsafe_allow_html=True
+        )
+else:
+    st.markdown(
+        "<style>"
+        "[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'] "
+        "{ display: none !important; }"
+        "</style>",
+        unsafe_allow_html=True
+    )
+
+# ============================================================
+# PAGES
+# ============================================================
+
+if page_selectionnee == "Accueil":
     afficher_accueil()
+    _afficher_pied_de_page()
 
-with page1:
+elif page_selectionnee == "Conseiller hebdo":
     afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, st.session_state["mes_joueurs_input"], filtrer)
 
-with page2:
+elif page_selectionnee == "Mercato":
     afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle)
+    _afficher_pied_de_page()
 
-with page3:
+elif page_selectionnee == "Simuler le match":
     afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle)
+    _afficher_pied_de_page()
