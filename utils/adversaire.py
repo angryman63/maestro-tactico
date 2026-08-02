@@ -324,29 +324,12 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             help="Coche tous les bonus encore en réserve — chacun est testé séparément "
                  "(jamais cumulés, un seul bonus utilisable par match en vrai MPG)."
         )
-        joueur_uber = None
-        conflit_capitaine_uber = False
         if any("Uber Eats" in b for b in mes_bonus_dispo_liste):
-            joueur_uber_choisi = st.selectbox(
-                "Joueur boosté par Uber Eats :",
-                ["Aucun"] + noms_mes_titu,
-                key="joueur_uber"
+            st.caption(
+                "🍔 Uber Eats : la meilleure cible est déterminée automatiquement "
+                "ci-dessous (testée sur chaque titulaire) — inutile de la choisir "
+                "à l'aveugle avant de voir l'effet."
             )
-            joueur_uber = joueur_uber_choisi if joueur_uber_choisi != "Aucun" else None
-            # Règle réelle : Uber Eats et Capitaine ne peuvent pas cibler LE MÊME
-            # joueur (pas d'exclusion globale entre les deux bonus). Si conflit,
-            # Uber Eats est simplement ignoré pour ce joueur au moment de lancer
-            # la simulation — le Capitaine, lui, continue de s'appliquer.
-            conflit_capitaine_uber = bool(
-                capitaine_actif and joueur_uber
-                and joueur_uber.strip().lower() == capitaine_actif.strip().lower()
-            )
-            if conflit_capitaine_uber:
-                st.error(
-                    f"Uber Eats et Capitaine ne peuvent pas cibler le même joueur "
-                    f"({capitaine_actif}). Choisissez un autre joueur pour Uber Eats, "
-                    f"ou désignez un autre capitaine."
-                )
         importance_match = st.radio(
             "Importance du match",
             ["Crucial", "Normal", "Sans enjeu"],
@@ -422,18 +405,6 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         if non_trouves_adv:
             st.warning(f"Joueurs non trouvés (adversaire) : {', '.join(non_trouves_adv)}")
 
-        # Cas résiduel : le joueur Uber Eats vient du sélecteur (limité aux titulaires
-        # saisis), mais ce titulaire précis peut malgré tout ne pas avoir été retrouvé
-        # dans les données (voir l'avertissement ci-dessus) — avertissement explicite
-        # plutôt qu'un bonus qui ne s'applique silencieusement à personne.
-        if joueur_uber and not conflit_capitaine_uber:
-            noms_trouves_moi = {j['nom'].strip().lower() for j in titu_moi}
-            if joueur_uber.strip().lower() not in noms_trouves_moi:
-                st.warning(
-                    f"Uber Eats : « {joueur_uber} » n'a pas été retrouvé dans les données "
-                    f"— le bonus ne s'appliquera à personne pour cette simulation."
-                )
-
         # Convertir en format Monte Carlo
         def joueur_vers_mc(j, ligne):
             return _joueur_vers_mc(
@@ -489,10 +460,20 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         # mécaniquement jamais nuire, ex. Suarez, Valise à Nanard).
         seed_commun = int(np.random.randint(0, 2**31 - 1))
 
-        # Simulation sans bonus (le Capitaine, structurel, reste actif même ici)
+        # Simulation "sans MON bonus" (le Capitaine, structurel, reste actif même
+        # ici) — bonus_adv est appliqué ICI AUSSI, identique à chaque simulation
+        # "avec mon bonus" ci-dessous : seul bonus_moi doit varier entre les deux
+        # simulations comparées. Avant ce correctif, bonus_adv n'était PAS passé
+        # à cette référence (implicitement None) alors qu'il l'était dans chaque
+        # test "avec bonus" — le delta affiché mesurait donc l'effet COMBINÉ
+        # (mon bonus + bonus adverse) au lieu de l'effet isolé de mon bonus,
+        # faisant paraître négatif un bonus pourtant mécaniquement neutre/positif
+        # dès que le bonus adverse estimé était pénalisant pour moi (ex. Cheat
+        # Code, Valise à Nanard adverse).
         with st.spinner("Simulation en cours (2000 scénarios)..."):
             res_sb = monte_carlo_match(
                 joueurs_moi_mc, joueurs_adv_mc,
+                bonus_adv=bonus_adv_key,
                 regles_remplacement=regles_remplacement_mc,
                 capitaine=capitaine_actif,
                 n_simulations=2000,
@@ -553,27 +534,59 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             # bonus, bonus_moi=<un seul à la fois>) — jamais cumulés entre eux,
             # conformément à la règle réelle MPG (un seul bonus utilisable par
             # match). bonus_adv (l'estimation adverse) reste, lui, constant sur
-            # toutes ces simulations : c'est un contexte de match, pas un choix
-            # de l'utilisateur qui varie d'un test à l'autre.
+            # toutes ces simulations ET SUR LA RÉFÉRENCE res_sb ci-dessus : c'est
+            # un contexte de match, pas un choix de l'utilisateur qui varie d'un
+            # test à l'autre — seul bonus_moi doit varier entre res_sb et res_b.
             resultats_bonus = {}
+            cibles_uber = {}
             with st.spinner("Test des bonus en cours..."):
                 for bonus in mes_bonus_dispo_liste:
                     bonus_key = bonus_key_map.get(bonus, None)
-                    res_b = monte_carlo_match(
-                        joueurs_moi_mc, joueurs_adv_mc,
-                        n_simulations=2000,
-                        bonus_moi=bonus_key,
-                        bonus_adv=bonus_adv_key,
-                        regles_remplacement=regles_remplacement_mc,
-                        capitaine=capitaine_actif,
-                        domicile=domicile,
-                        joueur_uber=(None if conflit_capitaine_uber else joueur_uber),
-                        seed=seed_commun
-                    )
+                    if bonus_key == 'uber_eats':
+                        # Recommandation automatique, même principe que le reste de
+                        # "Impact de vos bonus disponibles" : l'app conseille, l'utilisateur
+                        # n'a pas à deviner la cible avant même d'en voir l'effet. Teste
+                        # Uber Eats sur CHAQUE titulaire (le Capitaine est exclu — règle
+                        # réelle : les deux bonus ne peuvent pas cibler le même joueur, le
+                        # tester serait équivalent à ne pas utiliser Uber Eats du tout) et
+                        # retient la meilleure cible trouvée.
+                        candidats_uber = [j['nom'] for j in titu_moi if j['nom'] != capitaine_actif]
+                        res_b, meilleure_cible = None, None
+                        for candidat in candidats_uber:
+                            res_candidat = monte_carlo_match(
+                                joueurs_moi_mc, joueurs_adv_mc,
+                                n_simulations=2000,
+                                bonus_moi=bonus_key,
+                                bonus_adv=bonus_adv_key,
+                                regles_remplacement=regles_remplacement_mc,
+                                capitaine=capitaine_actif,
+                                domicile=domicile,
+                                joueur_uber=candidat,
+                                seed=seed_commun
+                            )
+                            if res_b is None or res_candidat['victoires'] > res_b['victoires']:
+                                res_b, meilleure_cible = res_candidat, candidat
+                        cibles_uber[bonus] = meilleure_cible
+                    else:
+                        res_b = monte_carlo_match(
+                            joueurs_moi_mc, joueurs_adv_mc,
+                            n_simulations=2000,
+                            bonus_moi=bonus_key,
+                            bonus_adv=bonus_adv_key,
+                            regles_remplacement=regles_remplacement_mc,
+                            capitaine=capitaine_actif,
+                            domicile=domicile,
+                            seed=seed_commun
+                        )
                     resultats_bonus[bonus] = res_b
 
+            def _label_bonus(bonus):
+                nom = bonus.split('—')[0].strip()
+                cible = cibles_uber.get(bonus)
+                return f"{nom} ({cible})" if cible else nom
+
             meilleur = max(resultats_bonus.items(), key=lambda x: x[1]['victoires'])
-            nom_meilleur = meilleur[0].split('—')[0].strip()
+            nom_meilleur = _label_bonus(meilleur[0])
             res_meilleur = meilleur[1]
             gain_meilleur = round(res_meilleur['victoires'] - res_sb['victoires'], 1)
 
@@ -594,7 +607,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 key=lambda x: x[1]['victoires'],
                 reverse=True
             ):
-                nom_bonus = bonus.split('—')[0].strip()
+                nom_bonus = _label_bonus(bonus)
                 gain = round(res['victoires'] - res_sb['victoires'], 1)
                 gain_str = f"+{gain}%" if gain > 0 else f"{gain}%"
                 if res['victoires'] > 50:
