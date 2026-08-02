@@ -389,7 +389,13 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     #    prix — un joueur pas cher mais très en dessous de son poste reste un
     #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
     mask_note_tres_faible = df_mercato['Note_pct'] <= 0.15
-    mask_eviter = mask_cher_decevant | mask_rarement | mask_note_tres_faible
+    # 4. Blessure longue : Indispo=True ET 8+ matchs consécutifs sans jouer (même
+    #    seuil que le badge 🚑 d'alerte_blessure) — indépendant du prix/de la note,
+    #    un joueur durablement indisponible est à éviter au mercato peu importe ses
+    #    statistiques passées (colonnes déjà calculées plus haut : 'Indispo ?' vient
+    #    directement de df, 'Absences_recentes' réutilise absences_consecutives()).
+    mask_indispo_longue = df_mercato['Indispo ?'].fillna(False).astype(bool) & (df_mercato['Absences_recentes'] >= 8)
+    mask_eviter = mask_cher_decevant | mask_rarement | mask_note_tres_faible | mask_indispo_longue
     df_eviter = df_mercato[mask_eviter].copy()
 
     # --- ProbaBut / ProbaArret (point 1) : Monte Carlo face aux moyennes de ligne de la ligue ---

@@ -9,6 +9,22 @@ from utils.table_style import inject_style, pill, escape, separateur
 
 _MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
 
+# Seuil de significativité du gain de bonus (points de %) — au-delà duquel un gain
+# est jugé assez important pour recommander d'utiliser le bonus plutôt que de
+# l'économiser. Variable selon l'enjeu réel du match : un match Crucial justifie
+# d'utiliser un bonus pour un gain modeste, un match Sans enjeu ne justifie
+# d'utiliser un bonus que pour un gain très important (pourquoi le dépenser sinon).
+SEUIL_SIGNIFICATIVITE_GAIN = {"Crucial": 3, "Normal": 8, "Sans enjeu": 15}
+
+
+def _est_favori(res):
+    """'Favori' = Victoire est le résultat le plus probable des trois (Victoire/Nul/
+    Défaite) — PAS un seuil absolu à 50% : à 48,8% Victoire / 21,4% Nul / 29,8%
+    Défaite, Victoire est bien le résultat le plus probable malgré un chiffre sous
+    50%. Utilisée à la fois par le bandeau du haut et par la recommandation, pour
+    que les deux zones de la page tranchent "favori ou pas" de la même façon."""
+    return res['victoires'] > max(res['nuls'], res['defaites'])
+
 
 def _analyser_lignes_joueurs(texte, df, exiger_onze):
     """Analyse les lignes saisies dans un champ Titulaires/Remplaçants de Simuler le match —
@@ -491,7 +507,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             st.metric("Défaite", f"{res_sb['defaites']}%")
 
         with col_s2:
-            if res_sb['victoires'] > 50:
+            if _est_favori(res_sb):
                 st.markdown("### Favori")
             elif res_sb['victoires'] > 40:
                 st.markdown("### Serré")
@@ -610,7 +626,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 nom_bonus = _label_bonus(bonus)
                 gain = round(res['victoires'] - res_sb['victoires'], 1)
                 gain_str = f"+{gain}%" if gain > 0 else f"{gain}%"
-                if res['victoires'] > 50:
+                if _est_favori(res):
                     indicateur = "+"
                 elif res['victoires'] > 40:
                     indicateur = "~"
@@ -623,29 +639,36 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 )
 
             # Recommandation finale — UNE SEULE, par palier de victoire (vic),
-            # tenant compte de l'importance du match et du gain du meilleur
-            # bonus (seuil de significativité : +6 points). Avant ce correctif,
-            # un second bloc de recommandation générique (uniquement basé sur
-            # gain_meilleur >= 6, ignorant vic/importance) s'affichait EN PLUS
-            # de cette logique par palier, produisant deux messages simultanés
-            # qui pouvaient se contredire (ex. "Utilisez X" et "Gardez vos
-            # bonus" en même temps avec Importance = Normal/Sans enjeu).
+            # tenant compte de l'importance du match et du gain du meilleur bonus
+            # (seuil de significativité variable selon l'enjeu — voir
+            # SEUIL_SIGNIFICATIVITE_GAIN : 3 pts en Crucial, 8 en Normal, 15 en
+            # Sans enjeu, au lieu d'un seuil fixe de 6 pts quel que soit l'enjeu).
+            # Avant ce correctif, un second bloc de recommandation générique
+            # (uniquement basé sur gain_meilleur >= 6, ignorant vic/importance)
+            # s'affichait EN PLUS de cette logique par palier, produisant deux
+            # messages simultanés qui pouvaient se contredire (ex. "Utilisez X"
+            # et "Gardez vos bonus" en même temps avec Importance = Normal/Sans
+            # enjeu). "Favori" (paliers vic>=50 et res_meilleur>=50 remplacés)
+            # utilise _est_favori (Victoire = résultat le plus probable des
+            # trois), pas un seuil absolu à 50% — même définition que le
+            # bandeau du haut, pour rester cohérent avec lui.
             vic = res_sb['victoires']
+            seuil_gain = SEUIL_SIGNIFICATIVITE_GAIN.get(importance_match, 8)
 
             if vic >= 65:
                 st.success(f"**Gardez vos bonus** — Largement favori ({vic}%). Économisez pour un match plus serré !")
-            elif vic >= 50:
+            elif _est_favori(res_sb):
                 if importance_match == "Crucial":
                     st.success(f"**Utilisez {nom_meilleur}** — Match crucial, passe à {res_meilleur['victoires']}% de victoire !")
                 else:
                     st.success(f"**Gardez vos bonus** — Favori à {vic}%, bonus non indispensable !")
             elif vic >= 40:
-                if round(res_meilleur['victoires'] - vic, 1) >= 6:
+                if round(res_meilleur['victoires'] - vic, 1) >= seuil_gain:
                     st.warning(f"**Utilisez {nom_meilleur}** — Match serré ({vic}%), le bonus fait passer à {res_meilleur['victoires']}% !")
                 else:
                     st.warning(f"**Match très serré ({vic}%)** — Aucun bonus ne change significativement le résultat")
             elif vic >= 30:
-                if res_meilleur['victoires'] >= 50:
+                if _est_favori(res_meilleur):
                     st.warning(f"**Utilisez {nom_meilleur}** — Peut renverser la situation ({vic}% → {res_meilleur['victoires']}%) !")
                 else:
                     st.error(f"**Défaite probable ({vic}%)** — Aucun bonus ne suffit. Économisez-les !")
@@ -656,7 +679,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             vic = res_sb['victoires']
             if vic >= 65:
                 st.success(f"Largement favori ({vic}%) — Pas besoin de bonus !")
-            elif vic >= 50:
+            elif _est_favori(res_sb):
                 st.success(f"Favori ({vic}%) — Victoire probable !")
             elif vic >= 40:
                 st.warning(f"Match serré ({vic}%) — Envisagez d'utiliser un bonus !")
