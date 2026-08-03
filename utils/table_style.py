@@ -538,6 +538,39 @@ div[data-testid="stButton"] > button[kind="primary"]:hover {
 .gs-roster-row .gs-roster-note {
     font-family: 'Oswald', sans-serif !important;
 }
+
+/* "Select all" (multiselect, ex. "Bonus disponibles") : injecté par Streamlit
+   dans le menu déroulant, texte codé en dur dans le bundle JS compilé — aucun
+   paramètre Python ne permet de le traduire. Contourné en masquant le texte
+   d'origine (font-size:0, pas display:none, pour ne pas perturber l'ARIA) et
+   en affichant le français via un pseudo-élément. Toujours la 1ère option du
+   menu (":first-child" parmi les li[role="option"] frères), quel que soit le
+   multiselect concerné — pas de dépendance aux classes emotion-cache
+   (générées, non stables d'une version de Streamlit à l'autre). */
+ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"]:first-child [data-testid="stTooltipHoverTarget"] > div {
+    font-size: 0 !important;
+    position: relative;
+}
+ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"]:first-child [data-testid="stTooltipHoverTarget"] > div::before {
+    content: "Tout sélectionner";
+    font-size: 0.875rem;
+    font-family: 'Raleway', sans-serif;
+}
+
+/* "No results" (multiselect/selectbox, quand le filtre tapé ne matche aucune
+   option) : même situation que "Select all" ci-dessus — texte codé en dur côté
+   frontend, testid stable (stSelectboxVirtualDropdownEmpty) ciblé plutôt que
+   des classes générées. */
+ul[data-testid="stSelectboxVirtualDropdownEmpty"] li {
+    font-size: 0 !important;
+    position: relative;
+}
+ul[data-testid="stSelectboxVirtualDropdownEmpty"] li::before {
+    content: "Aucun résultat";
+    font-size: 0.875rem;
+    font-family: 'Raleway', sans-serif;
+    color: rgba(255, 255, 255, 0.6);
+}
 </style>
 """
 def inject_style():
