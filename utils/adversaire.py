@@ -625,23 +625,32 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 )
             gain_adv_seul = round(res_sb['victoires'] - res_aucun_bonus['victoires'], 1)
 
-            # Mis en avant visuellement (st.metric, comme le résultat principal) au
-            # lieu d'un simple texte noyé dans la page : 3 étapes côte à côte — aucun
-            # bonus, bonus adverse seul, bonus adverse + le mien (jamais un cumul de MES
-            # bonus entre eux — chaque bonus a été testé seul ci-dessus).
+            # Mise en avant : LA valeur qui compte pour décider ("avec mon bonus", le
+            # bonus adverse estimé étant déjà pris en compte dans cette même valeur ET
+            # dans sa référence res_sb) — seule grande st.metric, pas "aucun bonus" ni
+            # "bonus adverse seul" qui ne sont pas ce que l'utilisateur s'apprête à
+            # vivre (l'adversaire, lui, a déjà décidé). Le delta reste la valeur
+            # marginale de MA décision par rapport à res_sb (bonus adverse déjà inclus).
+            st.metric(
+                f"Victoire avec {nom_meilleur}", f"{res_meilleur['victoires']}%",
+                delta=f"{gain_meilleur:+.1f} pts"
+            )
+
+            # Détail des 3 configurations en plus petit, pour le contexte seulement
+            # (texte, pas st.metric, pour rester visuellement secondaire par rapport à
+            # la valeur mise en avant ci-dessus) : sans cette vue, un bonus qui annule
+            # presque exactement l'effet du bonus adverse (ex. Zahia contre Cheat Code)
+            # est indiscernable d'un bonus qui pousse juste vers le nul sans rien
+            # annuler (ex. Valise contre Valise) — les deux affichent un gain positif
+            # par rapport à res_sb seul.
+            st.caption("Détail des 3 configurations testées (% de victoire) :")
             col_bonus0, col_bonus1, col_bonus2 = st.columns(3)
             with col_bonus0:
-                st.metric("Victoire (aucun bonus)", f"{res_aucun_bonus['victoires']}%")
+                st.caption(f"Aucun bonus : **{res_aucun_bonus['victoires']}%**")
             with col_bonus1:
-                st.metric(
-                    "Victoire (bonus adverse seul)", f"{res_sb['victoires']}%",
-                    delta=f"{gain_adv_seul:+.1f} pts"
-                )
+                st.caption(f"Bonus adverse seul : **{res_sb['victoires']}%** ({gain_adv_seul:+.1f} pts)")
             with col_bonus2:
-                st.metric(
-                    f"Victoire (avec {nom_meilleur})", f"{res_meilleur['victoires']}%",
-                    delta=f"{gain_meilleur:+.1f} pts"
-                )
+                st.caption(f"Avec {nom_meilleur} : **{res_meilleur['victoires']}%** ({gain_meilleur:+.1f} pts)")
 
             for bonus, res in sorted(
                 resultats_bonus.items(),
