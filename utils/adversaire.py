@@ -26,6 +26,36 @@ def _est_favori(res):
     return res['victoires'] > max(res['nuls'], res['defaites'])
 
 
+def _metrique_secondaire(label, valeur):
+    """Variante réduite de st.metric (HTML) — même structure label au-dessus/valeur en
+    gros en dessous, mais à une taille plus modeste qu'un vrai st.metric. Utilisée pour
+    Nul/Défaite (moins prioritaires que Victoire pour la décision) : reste confortablement
+    lisible, contrairement à un st.caption gris minuscule."""
+    return (
+        '<div style="margin-bottom:0.6rem;">'
+        f'<div style="font-size:0.875rem; color:rgba(255,255,255,0.6);">{escape(label)}</div>'
+        f'<div style="font-size:1.5rem; font-weight:600; color:#ffffff; line-height:1.3;">{escape(valeur)}</div>'
+        '</div>'
+    )
+
+
+def _detail_configuration(label, valeur, delta=None):
+    """Une ligne du détail des 3 configurations testées ("Impact de vos bonus
+    disponibles") — plus grande et plus contrastée qu'un st.caption (qui rendait ce
+    contexte peu lisible), mais nettement plus petite que la grande st.metric
+    "Victoire avec [mon bonus]" au-dessus : garde la hiérarchie visuelle sans
+    sacrifier la lisibilité."""
+    delta_html = (
+        f' <span style="font-size:0.9rem; color:rgba(255,255,255,0.6);">({escape(delta)})</span>'
+        if delta else ''
+    )
+    return (
+        '<div style="font-size:1.05rem; color:rgba(255,255,255,0.9); margin-bottom:4px;">'
+        f'{escape(label)} : <strong style="color:#e8c76b;">{escape(valeur)}</strong>{delta_html}'
+        '</div>'
+    )
+
+
 def _analyser_lignes_joueurs(texte, df, exiger_onze):
     """Analyse les lignes saisies dans un champ Titulaires/Remplaçants de Simuler le match —
     adapté de app.py::_verifier_noms_joueurs (même standard normaliser_recherche, via
@@ -320,12 +350,20 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 with rc3:
                     st.selectbox("Remplaçant", noms_mes_rempl, key=f"rempl_nom_{i}")
 
-    capitaine_designe = st.selectbox(
+    # Auto-corrige la valeur mémorisée si elle ne correspond plus à un titulaire
+    # actuel (ex. liste encore vide au tout premier rendu, puis remplie ensuite, ou
+    # capitaine retiré des Titulaires) — sans ça, Streamlit garde la sélection
+    # "vide" du tout premier rendu (options=[]) même une fois la liste remplie, et
+    # affiche le placeholder anglais par défaut ("Choose an option") au lieu de
+    # revenir sur le premier titulaire disponible.
+    if noms_mes_titu and st.session_state.get("capitaine_designe") not in noms_mes_titu:
+        st.session_state["capitaine_designe"] = noms_mes_titu[0]
+
+    capitaine_actif = st.selectbox(
         "Capitaine (bonus +0,5 — suit le joueur même s'il est remplacé en cours de simulation)",
-        ["Aucun"] + noms_mes_titu,
+        noms_mes_titu,
         key="capitaine_designe"
     )
-    capitaine_actif = capitaine_designe if capitaine_designe != "Aucun" else None
 
     separateur("CONFIGURATION DES BONUS")
     col_b1, col_b2 = st.columns(2)
@@ -337,6 +375,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             liste_bonus,
             key="mes_bonus_dispo",
             label_visibility="collapsed",
+            placeholder="Aucun bonus sélectionné",
             help="Coche tous les bonus encore en réserve — chacun est testé séparément "
                  "(jamais cumulés, un seul bonus utilisable par match en vrai MPG)."
         )
@@ -502,9 +541,14 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         col_s1, col_s2, col_s3 = st.columns([2, 1, 2])
 
         with col_s1:
+            # Victoire en st.metric (grande, priorité visuelle) — Nul/Défaite en
+            # taille réduite (_metrique_secondaire) mais lisible, pas juste un
+            # st.caption gris minuscule : même principe de hiérarchie que "Impact
+            # de vos bonus disponibles" (le chiffre qui compte pour décider ressort,
+            # le reste sert de contexte sans être illisible).
             st.metric("Victoire", f"{res_sb['victoires']}%")
-            st.metric("Nul", f"{res_sb['nuls']}%")
-            st.metric("Défaite", f"{res_sb['defaites']}%")
+            st.markdown(_metrique_secondaire("Nul", f"{res_sb['nuls']}%"), unsafe_allow_html=True)
+            st.markdown(_metrique_secondaire("Défaite", f"{res_sb['defaites']}%"), unsafe_allow_html=True)
 
         with col_s2:
             if _est_favori(res_sb):
@@ -636,21 +680,33 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 delta=f"{gain_meilleur:+.1f} pts"
             )
 
-            # Détail des 3 configurations en plus petit, pour le contexte seulement
-            # (texte, pas st.metric, pour rester visuellement secondaire par rapport à
-            # la valeur mise en avant ci-dessus) : sans cette vue, un bonus qui annule
-            # presque exactement l'effet du bonus adverse (ex. Zahia contre Cheat Code)
-            # est indiscernable d'un bonus qui pousse juste vers le nul sans rien
-            # annuler (ex. Valise contre Valise) — les deux affichent un gain positif
-            # par rapport à res_sb seul.
-            st.caption("Détail des 3 configurations testées (% de victoire) :")
+            # Détail des 3 configurations pour le contexte (texte HTML dimensionné via
+            # _detail_configuration, pas st.metric, pour rester visuellement secondaire
+            # par rapport à la valeur mise en avant ci-dessus) : sans cette vue, un
+            # bonus qui annule presque exactement l'effet du bonus adverse (ex. Zahia
+            # contre Cheat Code) est indiscernable d'un bonus qui pousse juste vers le
+            # nul sans rien annuler (ex. Valise contre Valise) — les deux affichent un
+            # gain positif par rapport à res_sb seul. st.caption (trop petit, gris
+            # uniforme) remplacé par un texte plus grand/contrasté, toujours nettement
+            # plus petit que la grande st.metric ci-dessus.
+            st.markdown(
+                '<div style="font-size:0.95rem; color:rgba(255,255,255,0.75); '
+                'margin:6px 0 6px;">Détail des 3 configurations testées (% de victoire) :</div>',
+                unsafe_allow_html=True
+            )
             col_bonus0, col_bonus1, col_bonus2 = st.columns(3)
             with col_bonus0:
-                st.caption(f"Aucun bonus : **{res_aucun_bonus['victoires']}%**")
+                st.markdown(_detail_configuration("Aucun bonus", f"{res_aucun_bonus['victoires']}%"), unsafe_allow_html=True)
             with col_bonus1:
-                st.caption(f"Bonus adverse seul : **{res_sb['victoires']}%** ({gain_adv_seul:+.1f} pts)")
+                st.markdown(
+                    _detail_configuration("Bonus adverse seul", f"{res_sb['victoires']}%", f"{gain_adv_seul:+.1f} pts"),
+                    unsafe_allow_html=True
+                )
             with col_bonus2:
-                st.caption(f"Avec {nom_meilleur} : **{res_meilleur['victoires']}%** ({gain_meilleur:+.1f} pts)")
+                st.markdown(
+                    _detail_configuration(f"Avec {nom_meilleur}", f"{res_meilleur['victoires']}%", f"{gain_meilleur:+.1f} pts"),
+                    unsafe_allow_html=True
+                )
 
             for bonus, res in sorted(
                 resultats_bonus.items(),
