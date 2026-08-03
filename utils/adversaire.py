@@ -40,7 +40,7 @@ def _metrique_secondaire(label, valeur):
 
 
 def _detail_configuration(label, valeur, delta=None):
-    """Une ligne du détail des 3 configurations testées ("Impact de vos bonus
+    """Une ligne du détail des 2 configurations testées ("Impact de vos bonus
     disponibles") — plus grande et plus contrastée qu'un st.caption (qui rendait ce
     contexte peu lisible), mais nettement plus petite que la grande st.metric
     "Victoire avec [mon bonus]" au-dessus : garde la hiérarchie visuelle sans
@@ -362,7 +362,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
     capitaine_actif = st.selectbox(
         "Capitaine (bonus +0,5 — suit le joueur même s'il est remplacé en cours de simulation)",
         noms_mes_titu,
-        key="capitaine_designe"
+        key="capitaine_designe",
+        placeholder="Renseignez d'abord vos titulaires ci-dessus"
     )
 
     separateur("CONFIGURATION DES BONUS")
@@ -650,25 +651,6 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             res_meilleur = meilleur[1]
             gain_meilleur = round(res_meilleur['victoires'] - res_sb['victoires'], 1)
 
-            # Référence "aucun bonus du tout" (ni le mien ni l'adverse) — même graine
-            # partagée que res_sb et resultats_bonus, pour que les 3 métriques ci-dessous
-            # soient directement comparables. Sans cette 3e valeur, un bonus qui annule
-            # presque exactement l'effet du bonus adverse (ex. Zahia contre Cheat Code)
-            # est indiscernable d'un bonus qui pousse juste vers le nul sans rien annuler
-            # (ex. Valise contre Valise) — les deux affichaient "gain positif vs res_sb"
-            # alors que leur situation par rapport à un match SANS AUCUN bonus est très
-            # différente. Visible d'un coup d'œil ici plutôt qu'à expliquer par du texte.
-            with st.spinner("Simulation en cours (2000 scénarios)..."):
-                res_aucun_bonus = monte_carlo_match(
-                    joueurs_moi_mc, joueurs_adv_mc,
-                    regles_remplacement=regles_remplacement_mc,
-                    capitaine=capitaine_actif,
-                    n_simulations=2000,
-                    domicile=domicile,
-                    seed=seed_commun
-                )
-            gain_adv_seul = round(res_sb['victoires'] - res_aucun_bonus['victoires'], 1)
-
             # Mise en avant : LA valeur qui compte pour décider ("avec mon bonus", le
             # bonus adverse estimé étant déjà pris en compte dans cette même valeur ET
             # dans sa référence res_sb) — seule grande st.metric, pas "aucun bonus" ni
@@ -680,28 +662,22 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 delta=f"{gain_meilleur:+.1f} pts"
             )
 
-            # Détail des 3 configurations pour le contexte (texte HTML dimensionné via
-            # _detail_configuration, pas st.metric, pour rester visuellement secondaire
-            # par rapport à la valeur mise en avant ci-dessus) : sans cette vue, un
-            # bonus qui annule presque exactement l'effet du bonus adverse (ex. Zahia
-            # contre Cheat Code) est indiscernable d'un bonus qui pousse juste vers le
-            # nul sans rien annuler (ex. Valise contre Valise) — les deux affichent un
-            # gain positif par rapport à res_sb seul. st.caption (trop petit, gris
-            # uniforme) remplacé par un texte plus grand/contrasté, toujours nettement
-            # plus petit que la grande st.metric ci-dessus.
+            # Détail des 2 configurations qui comptent réellement pour LA décision de
+            # l'utilisateur (utiliser mon bonus ou pas, sachant que l'adversaire utilise
+            # déjà le sien) — texte HTML dimensionné via _detail_configuration, pas
+            # st.metric, pour rester visuellement secondaire par rapport à la valeur
+            # mise en avant ci-dessus. "Aucun bonus" retiré : ce n'est pas une situation
+            # que l'utilisateur peut choisir (l'adversaire a déjà décidé d'utiliser le
+            # sien), cette 3e référence n'aidait donc pas la décision et compliquait la
+            # lecture sans raison.
             st.markdown(
                 '<div style="font-size:0.95rem; color:rgba(255,255,255,0.75); '
-                'margin:6px 0 6px;">Détail des 3 configurations testées (% de victoire) :</div>',
+                'margin:6px 0 6px;">Détail des 2 configurations testées (% de victoire) :</div>',
                 unsafe_allow_html=True
             )
-            col_bonus0, col_bonus1, col_bonus2 = st.columns(3)
-            with col_bonus0:
-                st.markdown(_detail_configuration("Aucun bonus", f"{res_aucun_bonus['victoires']}%"), unsafe_allow_html=True)
+            col_bonus1, col_bonus2 = st.columns(2)
             with col_bonus1:
-                st.markdown(
-                    _detail_configuration("Bonus adverse seul", f"{res_sb['victoires']}%", f"{gain_adv_seul:+.1f} pts"),
-                    unsafe_allow_html=True
-                )
+                st.markdown(_detail_configuration("Bonus adverse seul", f"{res_sb['victoires']}%"), unsafe_allow_html=True)
             with col_bonus2:
                 st.markdown(
                     _detail_configuration(f"Avec {nom_meilleur}", f"{res_meilleur['victoires']}%", f"{gain_meilleur:+.1f} pts"),
