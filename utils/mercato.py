@@ -122,7 +122,7 @@ def _formater_cellule(col, val):
         return f"{val:.2f}"
     if col == 'Buts':
         return f"{val:.0f}"
-    if col == '% Titu (sur matchs joués)':
+    if col == '% Titu (estimé)':
         return f"{val:.0f}%"
     if col == 'Matchs joués':
         return f"{val:.0f}"
@@ -312,9 +312,12 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # appliquée à la moyenne de saison plutôt qu'à la prédiction pondérée
     # récente de predire_note() : ça stabilise les petits échantillons sans
     # jamais réintroduire de biais de forme récente (Mercato n'utilise
-    # volontairement pas de Forme 6J). Utilisée uniquement dans les formules
-    # de score/percentile ci-dessous ; la colonne 'Note' affichée reste la
-    # vraie moyenne de saison brute.
+    # volontairement pas de Forme 6J). Utilisée dans les formules de score/
+    # percentile ci-dessous, ET dans la colonne 'Note' affichée (remplacée par
+    # la valeur stabilisée juste après TituStabilisee, cf. plus bas) : la
+    # moyenne brute de saison n'a aucun sens tant que la saison n'a pas
+    # commencé (0 pour tout le monde), contrairement à Buts/Matchs joués qui
+    # restent de vraies informations factuelles même à 0.
     #
     # Le repli poste (médiane de Note, calculé sur les joueurs à échantillon
     # fiable — >= 3 matchs cette saison) sert aussi de garde-fou côté N-1 :
@@ -324,6 +327,16 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     df_fiable_note = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
     note_mediane_poste = df_fiable_note.groupby('Poste')['Note'].median().to_dict()
     note_repli_global = df_fiable_note['Note'].median()
+    if pd.isna(note_repli_global):
+        # Tout début de saison : personne n'a encore >= 3 matchs, le repli
+        # "saison en cours" est vide -- repli sur la médiane N-1 par poste
+        # (données réelles, disponibles indépendamment de l'avancement de la
+        # saison en cours), pour qu'un joueur sans historique N-1 propre (ex.
+        # transfert sans passage en Ligue 1 la saison passée, type Openda)
+        # retombe sur une estimation crédible pour son poste plutôt qu'un
+        # faux zéro brut.
+        note_mediane_poste = df_n1.groupby('Poste')['Note'].median().to_dict()
+        note_repli_global = df_n1['Note'].median()
 
     df_mercato['NoteStabilisee'] = df.apply(
         lambda row: stabiliser_valeur_saison(
@@ -341,12 +354,13 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # match 26-27 n'est joué (0 est la valeur brute correcte, mais rend Stars/
     # Valeurs sûres/Pépites structurellement vides puisque ces catégories exigent
     # %Titu >= 50/60 : aucun joueur ne peut jamais les atteindre sans ce repli).
-    # Utilisée uniquement dans les scores/seuils ci-dessous ; la colonne '%Titu'
-    # affichée reste la vraie valeur brute de saison en cours (0 pré-saison,
-    # cohérent avec l'affichage de 'Note').
     df_fiable_titu = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
     titu_mediane_poste = df_fiable_titu.groupby('Poste')['%Titu'].median().to_dict()
     titu_repli_global = df_fiable_titu['%Titu'].median()
+    if pd.isna(titu_repli_global):
+        # Même repli ultime que Note ci-dessus (médiane N-1 par poste).
+        titu_mediane_poste = df_n1.groupby('Poste')['%Titu'].median().to_dict()
+        titu_repli_global = df_n1['%Titu'].median()
 
     df_mercato['TituStabilisee'] = df.apply(
         lambda row: stabiliser_valeur_saison(
@@ -357,6 +371,17 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         axis=1
     )
     df_mercato['TituStabilisee'] = df_mercato['TituStabilisee'].fillna(df_mercato['%Titu'])
+
+    # Affichage : les colonnes visibles 'Note' et '%Titu' montrent désormais
+    # la version stabilisée (100% N-1 tant que la saison en cours n'a rien à
+    # offrir) plutôt que la valeur brute de saison en cours (0.00/0% pour
+    # tout le monde en pré-saison, sans aucun sens pour l'utilisateur) —
+    # cohérent avec le score/les seuils de catégorie, qui utilisent déjà ces
+    # mêmes colonnes stabilisées. 'Buts' et 'Matchs_joues' restent bruts : ce
+    # sont de vraies informations factuelles sur la saison en cours (0 y est
+    # honnête), pas des estimations à stabiliser.
+    df_mercato['Note'] = df_mercato['NoteStabilisee']
+    df_mercato['%Titu'] = df_mercato['TituStabilisee']
 
     stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
     df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
@@ -623,7 +648,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                                ).rename(columns={
                                    'Enchere': 'Enchère moy.', 'Tension': 'Demande',
                                    'Matchs_joues': 'Matchs joués', 'ProbaBut': 'Proba but/arrêt',
-                                   '%Titu': '% Titu (sur matchs joués)',
+                                   '%Titu': '% Titu (estimé)',
                                }).reset_index(drop=True)
                 ),
                 unsafe_allow_html=True
@@ -660,7 +685,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                            'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
                            ].rename(columns={
                                'Enchere': 'Enchère moy.', 'Tension': 'Demande', 'Matchs_joues': 'Matchs joués',
-                               '%Titu': '% Titu (sur matchs joués)',
+                               '%Titu': '% Titu (estimé)',
                            }).reset_index(drop=True)
             ),
             unsafe_allow_html=True
@@ -692,7 +717,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                                 ].rename(columns={
                                     'Enchere': 'Enchère moy.', 'Tension': 'Demande',
                                     'Matchs_joues': 'Matchs joués', 'ProbaBut': nom_colonne_proba,
-                                    '%Titu': '% Titu (sur matchs joués)',
+                                    '%Titu': '% Titu (estimé)',
                                 }).reset_index(drop=True)
                         ),
                         unsafe_allow_html=True

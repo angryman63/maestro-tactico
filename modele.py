@@ -259,7 +259,14 @@ def stabiliser_valeur_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journ
     n'a encore >= 3 matchs cette saison, donc la médiane de repli calculée par
     l'appelant sur cet échantillon est vide) — explicitement ignoré dans ce
     cas plutôt que propagé, pour ne jamais corrompre silencieusement un N-1
-    par ailleurs valide avec un repli NaN."""
+    par ailleurs valide avec un repli NaN.
+
+    Sans historique N-1 DU TOUT (row_n1 = None, ex. transfert sans passage en
+    Ligue 1 la saison passée) ET sans match encore joué cette saison
+    (matchs_joues = 0, auquel cas la colonne brute vaut 0 par construction,
+    pas une vraie moyenne mesurée) : valeur_repli_poste sert de dernier
+    recours, pour ne jamais renvoyer un faux zéro à un joueur dont on ne sait
+    tout simplement rien — plutôt une estimation crédible pour son poste."""
     matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
     poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
 
@@ -269,14 +276,20 @@ def stabiliser_valeur_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journ
         valeur = pd.to_numeric(row.get(colonne, None), errors='coerce')
         return None if pd.isna(valeur) else float(valeur)
 
-    note_actuelle = _valeur_brute(row_actuelle)
+    # matchs_joues == 0 : la colonne brute vaut 0 par construction (aucun
+    # match joué à agréger), jamais une vraie mesure — ne pas la traiter
+    # comme une donnée actuelle fiable même si c'est un nombre valide.
+    note_actuelle = _valeur_brute(row_actuelle) if matchs_joues > 0 else None
     note_n1 = _valeur_brute(row_n1)
+    repli_valide = valeur_repli_poste is not None and not pd.isna(valeur_repli_poste)
 
-    if note_n1 is not None and valeur_repli_poste is not None and not pd.isna(valeur_repli_poste):
+    if note_n1 is not None and repli_valide:
         matchs_n1 = compter_matchs(row_n1, cols_n1) if cols_n1 else 0
         poids_repli_n1, poids_propre_n1 = poids_phase(matchs_n1, journee_actuelle, plafond_calendaire=False)
         if poids_repli_n1 > 0:
             note_n1 = poids_repli_n1 * valeur_repli_poste + poids_propre_n1 * note_n1
+    elif note_n1 is None and repli_valide:
+        note_n1 = valeur_repli_poste
 
     if poids_n1 > 0 and note_n1 is None:
         poids_n1, poids_actuelle = 0.0, 1.0
