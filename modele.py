@@ -86,7 +86,24 @@ def determiner_journee_actuelle(df, cols_journees):
     journees_jouees = [int(col[1:]) for col in cols_journees if (df[col] > 0).any()]
     return max(journees_jouees) if journees_jouees else 0
 
-def absences_consecutives(row, cols_journees):
+def absences_consecutives(row, cols_journees, journee_actuelle=None):
+    """Compte les absences consécutives les plus RÉCENTES du joueur.
+
+    cols_journees est trié de la dernière journée du calendrier (D34) vers la
+    première (D1) dans le fichier source — donc, tant que la saison n'est pas
+    terminée, les journées pas encore jouées (D34, D33, ... au-delà de la
+    journée calendaire actuelle) apparaissent EN TÊTE de liste. Sans filtrage,
+    ces journées futures (structurellement à 0, pas encore disputées) seraient
+    comptées comme des absences avant même d'atteindre les vrais matchs
+    joués — un bug qui ne se limite pas à la pré-saison : il fausse le compte
+    de TOUTE journée calendaire tant que journee_actuelle < 34.
+
+    journee_actuelle=None (par défaut) préserve l'ancien comportement (aucun
+    filtrage) pour compatibilité. Quand fourni, seules les colonnes de
+    journées déjà jouées (numéro <= journee_actuelle) sont considérées,
+    toujours de la plus récente à la plus ancienne."""
+    if journee_actuelle is not None:
+        cols_journees = [c for c in cols_journees if int(c[1:]) <= journee_actuelle]
     notes = [row[col] for col in cols_journees]
     count = 0
     for n in notes:
@@ -105,9 +122,18 @@ def predire_note(row, cols_journees):
     total_poids = sum(poids[:len(notes_6)])
     return round(sum(n * poids[i] for i, n in enumerate(notes_6)) / total_poids, 2)
 
-def alerte_blessure(row, cols_journees):
+def alerte_blessure(row, cols_journees, journee_actuelle=None):
+    """journee_actuelle=None (par défaut) préserve l'ancien comportement pour
+    les appelants qui ne le passent pas encore. Sous J3 : même en filtrant les
+    journées pas encore jouées (cf. absences_consecutives), l'échantillon
+    disponible est trop mince (0-2 matchs pour tout le monde) pour distinguer
+    "saison à peine commencée" de "vraiment absent" — le badge est alors
+    dénué de sens et supprimé plutôt que d'afficher un retour de blessure
+    généralisé sur un échantillon non significatif."""
+    if journee_actuelle is not None and journee_actuelle < 3:
+        return ""
     indispo = row.get('Indispo ?', False)
-    absences = absences_consecutives(row, cols_journees)
+    absences = absences_consecutives(row, cols_journees, journee_actuelle)
     if indispo == True:
         if absences >= 8:
             return f"🚑 Blessé ({absences} matchs)"
@@ -361,7 +387,7 @@ def get_prediction_complete(row_n1, cols_n1, row_actuelle, cols_actuelle, journe
     Retourne (note, mode, alerte).
     """
     note, mode = predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle)
-    alerte = alerte_blessure(row_actuelle, cols_actuelle) if row_actuelle is not None else ""
+    alerte = alerte_blessure(row_actuelle, cols_actuelle, journee_actuelle) if row_actuelle is not None else ""
     return note, mode, alerte
 
 def get_bandeau_avertissement(journee_actuelle):
@@ -572,7 +598,7 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         'proba_but': proba_but,
         'regularite': regularite,
         'titu': 0.0 if pd.isna(titu_pct) else float(titu_pct),
-        'alerte': alerte_blessure(row, cols_journees)
+        'alerte': alerte_blessure(row, cols_journees, journee_actuelle)
     }
 
 def simuler_buts_mpg(equipe_att, equipe_def, domicile=True):

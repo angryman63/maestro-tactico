@@ -300,9 +300,9 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     df_mercato['Matchs_joues'] = df.apply(
         lambda row: compter_matchs(row, cols_journees), axis=1)
     df_mercato['Absences_recentes'] = df.apply(
-        lambda row: absences_consecutives(row, cols_journees), axis=1)
+        lambda row: absences_consecutives(row, cols_journees, journee_actuelle), axis=1)
     df_mercato['Alerte'] = df.apply(
-        lambda row: alerte_blessure(row, cols_journees), axis=1)
+        lambda row: alerte_blessure(row, cols_journees, journee_actuelle), axis=1)
     df_mercato['Ratio'] = df_mercato['Note'] / df_mercato['Cote']  # gardée pour affichage éventuel, plus utilisée dans les scores
 
     # Note stabilisée (point 9) : la Note brute d'un joueur à 1-2 matchs joués
