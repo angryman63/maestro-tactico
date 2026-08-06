@@ -262,30 +262,24 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # fichier source sans colonnes d'enchères) : aucune colonne Enchere/AchatT1
     # n'existe du tout dans df. Pour un joueur avec un historique N-1 fiable
     # (même correspondance trouver_historique_n1 que Note/%Titu/ProbaBut), son
-    # enchère/demande RÉELLE de la saison 25-26 sert de référence, clairement
-    # étiquetée "(N-1)" — jamais présentée comme une vraie donnée 26-27. Pour
-    # un joueur SANS historique N-1 (vraie recrue/inconnu), aucune donnée n'est
-    # inventée (pas de repli sur une médiane de poste, contrairement à Note/
-    # %Titu) : "—"/"?" comme avant, cohérent avec le principe de ne jamais
-    # fabriquer une info pour un joueur dont on ne sait vraiment rien.
+    # enchère/demande RÉELLE de la saison 25-26 sert de référence — utilisée
+    # silencieusement, sans mention technique dans le libellé affiché (même
+    # convention que Note/%Titu : l'utilisateur voit une valeur, pas sa
+    # provenance). Pour un joueur SANS historique N-1 (vraie recrue/inconnu),
+    # aucune donnée n'est inventée (pas de repli sur une médiane de poste,
+    # contrairement à Note/%Titu) : "—"/"?" comme avant, cohérent avec le
+    # principe de ne jamais fabriquer une info pour un joueur dont on ne sait
+    # vraiment rien.
     # AchatT1 devient une vraie valeur numérique pour les joueurs concernés,
     # donc AchatT1_norm n'est plus NaN pour eux et calculer_score_mercato()
     # utilise la formule pondérée normale au lieu de la redistribuer ; ce
     # mécanisme de redistribution reste actif tel quel pour les inconnus
     # (AchatT1 toujours NaN pour eux) — son cas d'usage d'origine.
     enchere_disponible = col_enchere in df.columns and col_achat in df.columns
-    label_enchere = 'Enchère moy.' if enchere_disponible else 'Enchère moy. (N-1)'
-    label_demande = 'Demande' if enchere_disponible else 'Demande (N-1)'
+    label_enchere = 'Enchère moy.'
+    label_demande = 'Demande'
 
-    if not enchere_disponible:
-        st.info(
-            "ℹ️ Données d'enchères 26-27 pas encore disponibles — Enchère moy. et "
-            "Demande affichent la référence de la saison N-1 (25-26) pour les "
-            "joueurs ayant un historique connu ; \"—\"/\"?\" pour les autres "
-            "(recrues sans historique Ligue 1). Seront remplacées par les "
-            "vraies données 26-27 dès les premiers exports d'enchères."
-        )
-    elif taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
+    if enchere_disponible and taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
         st.caption(
             f"Pas de donnée détaillée pour les ligues à {taille_choisie.split()[0]} — "
             f"affichage de l'enchère moyenne toutes tailles confondues."

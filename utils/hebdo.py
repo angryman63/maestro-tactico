@@ -144,8 +144,39 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             continue
 
         notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
-        regularite_brute = taux_regularite(notes_jouees)
+        # Repli N-1 (même principe que Note/%Titu/ProbaBut sur Mercato) :
+        # taux_regularite([]) retombe sur 0.0 quand la saison en cours n'a
+        # encore aucune note exploitable (systématique en pré-saison) — et
+        # comme q25/q50/q75 sont alors aussi tous à 0.0 (calculés sur la même
+        # valeur uniforme pour tout le poste), etiquette_regularite() reclasse
+        # tout le monde en "Irrégulier" par construction, sans refléter le
+        # moindre vrai profil. Si un historique N-1 fiable existe, le taux de
+        # flop est calculé sur les derniers matchs RÉELS de la saison 25-26 à
+        # la place. Sans historique N-1 (vraie recrue/inconnu) : comportement
+        # inchangé (0.0, comme avant).
+        if notes_jouees:
+            regularite_brute = taux_regularite(notes_jouees)
+        elif row_n1 is not None:
+            notes_jouees_n1 = [row_n1[col] for col in cols_journees_n1 if row_n1[col] > 0]
+            regularite_brute = taux_regularite(notes_jouees_n1)
+        else:
+            regularite_brute = taux_regularite(notes_jouees)
+
         prob_jouer = row['%Titu'] / 100 if '%Titu' in df.columns else 0.8
+        # %Titu de repli réservé au plancher de fiabilité de
+        # etiquette_regularite() (%Titu >= 70/50 selon le label) : sans lui,
+        # ce plancher reclasserait "Irrégulier" même un joueur dont le vrai
+        # taux de flop N-1 ci-dessus est excellent, puisque son %Titu BRUT de
+        # saison en cours reste à 0 tant qu'il n'a rejoué aucun match.
+        # N'affecte QUE ce plancher interne — la colonne "% Titulaire"
+        # affichée reste la vraie valeur brute de saison en cours, inchangée.
+        if notes_jouees:
+            titu_pct_gate = round(prob_jouer * 100, 1)
+        elif row_n1 is not None and pd.notna(row_n1.get('%Titu')):
+            titu_pct_gate = float(row_n1['%Titu'])
+        else:
+            titu_pct_gate = round(prob_jouer * 100, 1)
+
         moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
 
         # Pondération dynamique de la formule "Recommandé" en début de saison :
@@ -163,6 +194,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             'Forme 6J': round(float(note_forme), 2),
             '_regularite_brute': regularite_brute,
             '_titu_pct': round(prob_jouer * 100, 1),
+            '_titu_pct_gate': titu_pct_gate,
             '% Titulaire': f"{int(prob_jouer*100)}%",
             '_score': round(float(score), 2)
         })
@@ -178,7 +210,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             lambda row: etiquette_regularite(
                 row['_regularite_brute'], q25, q50, q75,
                 row['Note saison'], note_mediane_poste,
-                row['_titu_pct']
+                row['_titu_pct_gate']
             ),
             axis=1
         )
