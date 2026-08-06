@@ -190,11 +190,18 @@ def predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_a
     note = round(poids_n1 * note_n1 + poids_actuelle * note_actuelle, 2)
     return note, f"{int(poids_n1 * 100)}%N-1/{int(poids_actuelle * 100)}%actuelle"
 
-def stabiliser_note_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle,
-                            note_repli_poste=None):
-    """Stabilise la colonne 'Note' de saison brute (moyenne simple sur tous les
+def stabiliser_valeur_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle,
+                              colonne='Note', valeur_repli_poste=None):
+    """Stabilise une colonne d'agrégat de saison brute (moyenne simple sur tous les
     matchs joués, PAS la version pondérée récente de predire_note()) pour les
-    petits échantillons, en la mélangeant avec la Note de saison N-1 du joueur.
+    petits échantillons, en la mélangeant avec la valeur de saison N-1 du joueur.
+    Généralisée à partir de la logique 'Note' d'origine (colonne='Note' par
+    défaut) — réutilisée telle quelle pour toute autre colonne d'agrégat de
+    saison exposée au même biais de petit échantillon (ex. '%Titu', qui n'a,
+    contrairement à Note, aucun autre mécanisme de repli N-1 dans le code :
+    sans cette généralisation, %Titu resterait bloqué à sa valeur brute de
+    saison en cours, correctement à 0 en pré-saison mais alors totalement
+    indiscriminant pour les besoins de classement/seuils qui s'appuient dessus).
 
     Réutilise la même grille progressive que predire_note_hybride() (poids_phase,
     basée sur le nombre de matchs déjà joués par CE joueur), mais SANS son
@@ -214,30 +221,36 @@ def stabiliser_note_saison(row_n1, cols_n1, row_actuelle, cols_actuelle, journee
 
     Fiabilité à double sens : un historique N-1 trouvé (row_n1 non None) mais
     lui-même bâti sur peu de matchs (ex. joueur qui a très peu joué la saison
-    dernière aussi) n'est pas transféré tel quel — sa propre Note N-1 est
-    d'abord mélangée avec note_repli_poste (médiane du poste, calculée par
+    dernière aussi) n'est pas transféré tel quel — sa propre valeur N-1 est
+    d'abord mélangée avec valeur_repli_poste (médiane du poste, calculée par
     l'appelant sur les joueurs à échantillon fiable) selon la même grille
     poids_phase(), positionnée cette fois par le nombre de matchs N-1
     disponibles plutôt que par la saison en cours. Sans quoi le problème de
     petit échantillon réapparaîtrait à l'identique, simplement transféré sur
-    les données N-1 au lieu des données actuelles."""
+    les données N-1 au lieu des données actuelles.
+
+    valeur_repli_poste peut être NaN (ex. tout début de saison : aucun joueur
+    n'a encore >= 3 matchs cette saison, donc la médiane de repli calculée par
+    l'appelant sur cet échantillon est vide) — explicitement ignoré dans ce
+    cas plutôt que propagé, pour ne jamais corrompre silencieusement un N-1
+    par ailleurs valide avec un repli NaN."""
     matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
     poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
 
-    def _note_brute(row):
+    def _valeur_brute(row):
         if row is None:
             return None
-        note = pd.to_numeric(row.get('Note', None), errors='coerce')
-        return None if pd.isna(note) else float(note)
+        valeur = pd.to_numeric(row.get(colonne, None), errors='coerce')
+        return None if pd.isna(valeur) else float(valeur)
 
-    note_actuelle = _note_brute(row_actuelle)
-    note_n1 = _note_brute(row_n1)
+    note_actuelle = _valeur_brute(row_actuelle)
+    note_n1 = _valeur_brute(row_n1)
 
-    if note_n1 is not None and note_repli_poste is not None:
+    if note_n1 is not None and valeur_repli_poste is not None and not pd.isna(valeur_repli_poste):
         matchs_n1 = compter_matchs(row_n1, cols_n1) if cols_n1 else 0
         poids_repli_n1, poids_propre_n1 = poids_phase(matchs_n1, journee_actuelle, plafond_calendaire=False)
         if poids_repli_n1 > 0:
-            note_n1 = poids_repli_n1 * note_repli_poste + poids_propre_n1 * note_n1
+            note_n1 = poids_repli_n1 * valeur_repli_poste + poids_propre_n1 * note_n1
 
     if poids_n1 > 0 and note_n1 is None:
         poids_n1, poids_actuelle = 0.0, 1.0
@@ -256,7 +269,7 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
                                 moyenne_repli, ecart_type_repli):
     """Stabilise la moyenne ET l'écart-type de notes utilisés par
     simuler_proba_but() (tirage Monte Carlo de ProbaBut/ProbaArret) pour les
-    petits échantillons — même principe que stabiliser_note_saison() : mélange
+    petits échantillons — même principe que stabiliser_valeur_saison() : mélange
     les stats de la saison en cours avec celles de la saison N-1 du joueur,
     mêmes poids progressifs poids_phase() (sans plafond calendaire), même
     correspondance N-1 (trouver_historique_n1, appelée par l'appelant).

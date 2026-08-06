@@ -4,7 +4,7 @@ import numpy as np
 from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
-    taux_regularite, stabiliser_note_saison, stabiliser_stats_proba_but, normaliser_recherche,
+    taux_regularite, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -177,7 +177,7 @@ def calculer_score_mercato(row, strategie):
     proba = row['ProbaBut_norm'] * 10
     note = row['NoteStabilisee']
     variation_residu = row['Variation_residu_norm'] * 10
-    titu = row['%Titu'] / 100 * 10
+    titu = row['TituStabilisee'] / 100 * 10
 
     poids_note = reste * prop['note']
     poids_variation = reste * prop['variation_residu']
@@ -320,20 +320,43 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # fiable — >= 3 matchs cette saison) sert aussi de garde-fou côté N-1 :
     # si l'historique N-1 d'un joueur repose lui-même sur peu de matchs, il
     # est mélangé à ce repli plutôt que transféré tel quel (cf. docstring de
-    # stabiliser_note_saison).
+    # stabiliser_valeur_saison).
     df_fiable_note = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
     note_mediane_poste = df_fiable_note.groupby('Poste')['Note'].median().to_dict()
     note_repli_global = df_fiable_note['Note'].median()
 
     df_mercato['NoteStabilisee'] = df.apply(
-        lambda row: stabiliser_note_saison(
+        lambda row: stabiliser_valeur_saison(
             trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
-            row, cols_journees, journee_actuelle,
+            row, cols_journees, journee_actuelle, 'Note',
             note_mediane_poste.get(row['Poste'], note_repli_global)
         ),
         axis=1
     )
     df_mercato['NoteStabilisee'] = df_mercato['NoteStabilisee'].fillna(df_mercato['Note'])
+
+    # %Titu stabilisé (même principe que NoteStabilisee, même fonction générique) :
+    # contrairement à Note, %Titu brut n'a AUCUN autre repli N-1 dans tout le code —
+    # utilisé tel quel, il resterait bloqué à 0 pour 100% des joueurs tant qu'aucun
+    # match 26-27 n'est joué (0 est la valeur brute correcte, mais rend Stars/
+    # Valeurs sûres/Pépites structurellement vides puisque ces catégories exigent
+    # %Titu >= 50/60 : aucun joueur ne peut jamais les atteindre sans ce repli).
+    # Utilisée uniquement dans les scores/seuils ci-dessous ; la colonne '%Titu'
+    # affichée reste la vraie valeur brute de saison en cours (0 pré-saison,
+    # cohérent avec l'affichage de 'Note').
+    df_fiable_titu = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
+    titu_mediane_poste = df_fiable_titu.groupby('Poste')['%Titu'].median().to_dict()
+    titu_repli_global = df_fiable_titu['%Titu'].median()
+
+    df_mercato['TituStabilisee'] = df.apply(
+        lambda row: stabiliser_valeur_saison(
+            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
+            row, cols_journees, journee_actuelle, '%Titu',
+            titu_mediane_poste.get(row['Poste'], titu_repli_global)
+        ),
+        axis=1
+    )
+    df_mercato['TituStabilisee'] = df_mercato['TituStabilisee'].fillna(df_mercato['%Titu'])
 
     stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
     df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
@@ -453,7 +476,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # Fiabilité (Valeurs sûres) : mélange %Titu (dispo) + régularité (constance des
     # notes), percentilée par poste — distincte de "Note" (qui mesure l'excellence,
     # pas la fiabilité).
-    df_mercato['Fiabilite'] = 0.6 * (df_mercato['%Titu'] / 100) + 0.4 * df_mercato['Regularite']
+    df_mercato['Fiabilite'] = 0.6 * (df_mercato['TituStabilisee'] / 100) + 0.4 * df_mercato['Regularite']
     df_mercato['Fiabilite_pct'] = df_mercato.groupby('Poste')['Fiabilite'].rank(pct=True)
 
     # Score pépite : prix bas (rang inversé) + note correcte, re-percentilé par poste
@@ -470,7 +493,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # qu'il le devrait. Restreindre le pourcentile à la sous-population qui joue déjà
     # élimine cette pollution sur tous les postes, uniformément (effet mineur ailleurs,
     # où la proportion de joueurs jamais utilisés est bien plus faible).
-    mask_titu_pepites = df_mercato['%Titu'] >= 50
+    mask_titu_pepites = df_mercato['TituStabilisee'] >= 50
     df_actifs = df_mercato.loc[mask_titu_pepites]
     cote_pct_actifs = df_actifs.groupby('Poste')['Cote'].rank(pct=True)
     note_pct_actifs = df_actifs.groupby('Poste')['NoteStabilisee'].rank(pct=True)
@@ -483,7 +506,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     mask_stars = (
         (df_mercato['Cote_pct'] >= 0.95) &
         (df_mercato['Note_pct'] >= 0.85) &
-        (df_mercato['%Titu'] >= 60) &
+        (df_mercato['TituStabilisee'] >= 60) &
         (df_mercato['Tension'] != "Très peu demandé") &
         ~mask_eviter
     )
@@ -493,13 +516,13 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # qui cherche justement un bon coup pas cher.
     mask_pepites = (
         (df_mercato['Score_pepite_pct'] >= 0.85) &
-        (df_mercato['%Titu'] >= 50) &
+        (df_mercato['TituStabilisee'] >= 50) &
         ~mask_eviter
     )
     mask_valeurs = (
         (df_mercato['Cote_pct'] >= 0.50) & (df_mercato['Cote_pct'] < 0.85) &
         (df_mercato['Fiabilite_pct'] >= 0.60) &
-        (df_mercato['%Titu'] >= 60) &
+        (df_mercato['TituStabilisee'] >= 60) &
         ~mask_eviter &
         ~mask_pepites
     )
