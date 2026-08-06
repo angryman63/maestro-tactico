@@ -379,6 +379,15 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     ecart_type_mediane_poste = df_fiable.groupby('Poste')['EcartTypeNote'].median().to_dict()
     moyenne_repli_global = df_fiable['MoyenneNote'].median()
     ecart_type_repli_global = df_fiable['EcartTypeNote'].median()
+    # Tout début de saison : personne n'a encore >= 3 matchs, df_fiable est vide
+    # et ces médianes valent NaN — repli neutre (note 5/10, écart-type modéré)
+    # plutôt qu'un NaN qui ferait planter simuler_proba_but() (ecart_type <= 0
+    # sur None lève une TypeError) pour tout joueur sans note actuelle NI
+    # historique N-1 (ex. transfert sans historique Ligue 1 : Openda).
+    if pd.isna(moyenne_repli_global):
+        moyenne_repli_global = 5.0
+    if pd.isna(ecart_type_repli_global):
+        ecart_type_repli_global = 1.0
 
     stats_stabilisees = df.apply(
         lambda row: stabiliser_stats_proba_but(

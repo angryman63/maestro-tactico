@@ -315,13 +315,33 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
     tour mélangés avec moyenne_repli/ecart_type_repli selon la même grille
     poids_phase(), positionnée cette fois par le nombre de matchs N-1
     disponibles — sinon le problème de petit échantillon réapparaîtrait à
-    l'identique, simplement transféré sur les données N-1."""
+    l'identique, simplement transféré sur les données N-1.
+
+    moyenne_repli/ecart_type_repli peuvent être NaN (ex. tout début de
+    saison : aucun joueur n'a encore >= 3 matchs cette saison, donc les
+    médianes de repli calculées par l'appelant sur cet échantillon sont
+    vides) — explicitement ignorés dans ce cas plutôt que propagés, pour ne
+    jamais renvoyer un (NaN, NaN) qui ferait silencieusement retomber
+    simuler_proba_but() à 0% (même défaut que celui déjà corrigé dans
+    stabiliser_valeur_saison(), même cause, même solution)."""
+    repli_valide = (
+        moyenne_repli is not None and not pd.isna(moyenne_repli)
+        and ecart_type_repli is not None and not pd.isna(ecart_type_repli)
+    )
+
     matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
     poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle, plafond_calendaire=False)
 
     notes_actuelle = [row_actuelle[col] for col in cols_actuelle if row_actuelle[col] > 0] if row_actuelle is not None else []
-    moyenne_actuelle = float(np.mean(notes_actuelle)) if notes_actuelle else moyenne_repli
-    ecart_type_actuelle = float(np.std(notes_actuelle)) if notes_actuelle else 0.0
+    if notes_actuelle:
+        moyenne_actuelle = float(np.mean(notes_actuelle))
+        ecart_type_actuelle = float(np.std(notes_actuelle))
+    elif repli_valide:
+        moyenne_actuelle = moyenne_repli
+        ecart_type_actuelle = 0.0
+    else:
+        moyenne_actuelle = None
+        ecart_type_actuelle = None
 
     moyenne_n1, ecart_type_n1 = None, None
     matchs_n1 = 0
@@ -331,20 +351,26 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
         if notes_n1:
             moyenne_n1 = float(np.mean(notes_n1))
             ecart_type_n1 = float(np.std(notes_n1))
-    if moyenne_n1 is None:
-        moyenne_n1 = moyenne_repli
-    if ecart_type_n1 is None:
-        ecart_type_n1 = ecart_type_repli
-    if matchs_n1 > 0:
+    if matchs_n1 > 0 and moyenne_n1 is not None:
         poids_repli_n1, poids_propre_n1 = poids_phase(matchs_n1, journee_actuelle, plafond_calendaire=False)
-        if poids_repli_n1 > 0:
+        if poids_repli_n1 > 0 and repli_valide:
             moyenne_n1 = poids_repli_n1 * moyenne_repli + poids_propre_n1 * moyenne_n1
             ecart_type_n1 = poids_repli_n1 * ecart_type_repli + poids_propre_n1 * ecart_type_n1
+    if moyenne_n1 is None and repli_valide:
+        moyenne_n1 = moyenne_repli
+        ecart_type_n1 = ecart_type_repli
 
-    if poids_n1 == 1.0:
-        return moyenne_n1, ecart_type_n1
+    if poids_n1 > 0 and moyenne_n1 is None:
+        poids_n1, poids_actuelle = 0.0, 1.0
+    if poids_actuelle > 0 and moyenne_actuelle is None:
+        poids_n1, poids_actuelle = 1.0, 0.0
+
     if poids_actuelle == 1.0:
         return moyenne_actuelle, ecart_type_actuelle
+    if poids_n1 == 1.0:
+        return moyenne_n1, ecart_type_n1
+    if moyenne_actuelle is None and moyenne_n1 is None:
+        return None, None
     moyenne = poids_n1 * moyenne_n1 + poids_actuelle * moyenne_actuelle
     ecart_type = poids_n1 * ecart_type_n1 + poids_actuelle * ecart_type_actuelle
     return moyenne, ecart_type
