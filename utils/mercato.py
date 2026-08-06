@@ -254,27 +254,39 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         label_visibility="collapsed"
     )
     col_enchere, col_achat = _colonnes_taille(df, taille_choisie)
+    # Avant les vrais exports 6/8/10 joueurs (ex. tout début de saison, un seul
+    # fichier source sans colonnes d'enchères) : aucune colonne Enchere/AchatT1
+    # n'existe du tout dans df. Plutôt que de bloquer complètement Mercato, on
+    # construit Enchere/AchatT1 à NaN pour tous les joueurs — le mécanisme de
+    # redistribution de poids déjà en place dans calculer_score_mercato() pour
+    # les joueurs à donnée d'enchère manquante (pd.isna(row['AchatT1_norm']))
+    # s'applique alors automatiquement à 100% des joueurs, sans code spécial :
+    # le score retombe sur ProbaBut/Note/Variation_residu/%Titu uniquement.
+    enchere_disponible = col_enchere in df.columns and col_achat in df.columns
 
-    if col_enchere not in df.columns:
-        st.warning(
-            "Aucune donnée d'enchères trouvée dans le fichier joueurs chargé. "
-            "Vérifie que le fichier joueurs enrichi (avec les colonnes d'enchères) est bien utilisé."
+    if not enchere_disponible:
+        st.info(
+            "ℹ️ Données d'enchères pas encore disponibles — classement basé sur la "
+            "performance uniquement (Note, Proba but/arrêt, %Titu). Le critère de "
+            "demande de marché (AchatT1) sera pris en compte dès les premiers exports "
+            "d'enchères de la saison."
         )
-        return
-
-    if taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
+    elif taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
         st.caption(
             f"Pas de donnée détaillée pour les ligues à {taille_choisie.split()[0]} — "
             f"affichage de l'enchère moyenne toutes tailles confondues."
         )
 
-    base_cols = ['Joueur', 'Club', 'Poste', 'Cote', 'Var Cote', col_enchere, col_achat,
+    base_cols = ['Joueur', 'Club', 'Poste', 'Cote',
                  'Note', 'Variation', 'Buts', '%Titu', 'Indispo ?']
     df_mercato = df[base_cols].copy()
-    df_mercato = df_mercato.rename(columns={
-        col_enchere: 'Enchere',
-        col_achat: 'AchatT1',
-    })
+    # 'Var Cote' est, comme Enchere/AchatT1, une colonne des exports enrichis
+    # par taille de ligue — absente du fichier de base tant que les vrais
+    # exports 6/8/10 joueurs n'existent pas. Non utilisée dans les scores/
+    # affichages ci-dessous : NaN en son absence n'affecte rien d'autre.
+    df_mercato['Var Cote'] = df['Var Cote'] if 'Var Cote' in df.columns else np.nan
+    df_mercato['Enchere'] = df[col_enchere] if enchere_disponible else np.nan
+    df_mercato['AchatT1'] = df[col_achat] if enchere_disponible else np.nan
 
     for col in ['Cote', 'Var Cote', 'Enchere', 'AchatT1', 'Note', 'Variation', 'Buts', '%Titu']:
         df_mercato[col] = pd.to_numeric(df_mercato[col], errors='coerce')
