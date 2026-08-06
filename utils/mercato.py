@@ -106,7 +106,11 @@ def _pill_alerte(val):
 
 
 def _formater_cellule(col, val):
-    if col == 'Demande':
+    # 'Demande'/'Enchère moy.' peuvent porter un suffixe dynamique ("(estimée
+    # N-1)") tant que les vraies données d'enchères 26-27 ne sont pas
+    # disponibles (cf. label_demande/label_enchere dans afficher_mercato) —
+    # comparaison par préfixe pour continuer à matcher dans les deux cas.
+    if col.startswith('Demande'):
         return _pill_demande(val)
     if col == 'Alerte':
         return _pill_alerte(val)
@@ -116,7 +120,7 @@ def _formater_cellule(col, val):
         return dash()
     if col == 'Cote':
         return f"{val:.0f}"
-    if col == 'Enchère moy.':
+    if col.startswith('Enchère moy.'):
         return f"{val:.1f}"
     if col == 'Note':
         return f"{val:.2f}"
@@ -256,20 +260,30 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     col_enchere, col_achat = _colonnes_taille(df, taille_choisie)
     # Avant les vrais exports 6/8/10 joueurs (ex. tout début de saison, un seul
     # fichier source sans colonnes d'enchères) : aucune colonne Enchere/AchatT1
-    # n'existe du tout dans df. Plutôt que de bloquer complètement Mercato, on
-    # construit Enchere/AchatT1 à NaN pour tous les joueurs — le mécanisme de
-    # redistribution de poids déjà en place dans calculer_score_mercato() pour
-    # les joueurs à donnée d'enchère manquante (pd.isna(row['AchatT1_norm']))
-    # s'applique alors automatiquement à 100% des joueurs, sans code spécial :
-    # le score retombe sur ProbaBut/Note/Variation_residu/%Titu uniquement.
+    # n'existe du tout dans df. Pour un joueur avec un historique N-1 fiable
+    # (même correspondance trouver_historique_n1 que Note/%Titu/ProbaBut), son
+    # enchère/demande RÉELLE de la saison 25-26 sert de référence, clairement
+    # étiquetée "(N-1)" — jamais présentée comme une vraie donnée 26-27. Pour
+    # un joueur SANS historique N-1 (vraie recrue/inconnu), aucune donnée n'est
+    # inventée (pas de repli sur une médiane de poste, contrairement à Note/
+    # %Titu) : "—"/"?" comme avant, cohérent avec le principe de ne jamais
+    # fabriquer une info pour un joueur dont on ne sait vraiment rien.
+    # AchatT1 devient une vraie valeur numérique pour les joueurs concernés,
+    # donc AchatT1_norm n'est plus NaN pour eux et calculer_score_mercato()
+    # utilise la formule pondérée normale au lieu de la redistribuer ; ce
+    # mécanisme de redistribution reste actif tel quel pour les inconnus
+    # (AchatT1 toujours NaN pour eux) — son cas d'usage d'origine.
     enchere_disponible = col_enchere in df.columns and col_achat in df.columns
+    label_enchere = 'Enchère moy.' if enchere_disponible else 'Enchère moy. (N-1)'
+    label_demande = 'Demande' if enchere_disponible else 'Demande (N-1)'
 
     if not enchere_disponible:
         st.info(
-            "ℹ️ Données d'enchères pas encore disponibles — classement basé sur la "
-            "performance uniquement (Note, Proba but/arrêt, %Titu). Le critère de "
-            "demande de marché (AchatT1) sera pris en compte dès les premiers exports "
-            "d'enchères de la saison."
+            "ℹ️ Données d'enchères 26-27 pas encore disponibles — Enchère moy. et "
+            "Demande affichent la référence de la saison N-1 (25-26) pour les "
+            "joueurs ayant un historique connu ; \"—\"/\"?\" pour les autres "
+            "(recrues sans historique Ligue 1). Seront remplacées par les "
+            "vraies données 26-27 dès les premiers exports d'enchères."
         )
     elif taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
         st.caption(
@@ -280,13 +294,31 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     base_cols = ['Joueur', 'Club', 'Poste', 'Cote',
                  'Note', 'Variation', 'Buts', '%Titu', 'Indispo ?']
     df_mercato = df[base_cols].copy()
-    # 'Var Cote' est, comme Enchere/AchatT1, une colonne des exports enrichis
-    # par taille de ligue — absente du fichier de base tant que les vrais
-    # exports 6/8/10 joueurs n'existent pas. Non utilisée dans les scores/
-    # affichages ci-dessous : NaN en son absence n'affecte rien d'autre.
+    # 'Var Cote' n'est, contrairement à Enchere/AchatT1, jamais affichée nulle
+    # part (colonne interne inutilisée) — NaN en son absence n'a donc pas
+    # besoin du même repli N-1.
     df_mercato['Var Cote'] = df['Var Cote'] if 'Var Cote' in df.columns else np.nan
-    df_mercato['Enchere'] = df[col_enchere] if enchere_disponible else np.nan
-    df_mercato['AchatT1'] = df[col_achat] if enchere_disponible else np.nan
+
+    if enchere_disponible:
+        df_mercato['Enchere'] = df[col_enchere]
+        df_mercato['AchatT1'] = df[col_achat]
+    else:
+        col_enchere_n1, col_achat_n1 = _colonnes_taille(df_n1, taille_choisie)
+
+        def _enchere_n1(row):
+            row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+            if row_n1 is not None and pd.notna(row_n1.get(col_enchere_n1)):
+                return row_n1[col_enchere_n1]
+            return np.nan
+
+        def _achat_n1(row):
+            row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+            if row_n1 is not None and pd.notna(row_n1.get(col_achat_n1)):
+                return row_n1[col_achat_n1]
+            return np.nan
+
+        df_mercato['Enchere'] = df.apply(_enchere_n1, axis=1)
+        df_mercato['AchatT1'] = df.apply(_achat_n1, axis=1)
 
     for col in ['Cote', 'Var Cote', 'Enchere', 'AchatT1', 'Note', 'Variation', 'Buts', '%Titu']:
         df_mercato[col] = pd.to_numeric(df_mercato[col], errors='coerce')
@@ -646,7 +678,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                                'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte', 'ProbaBut']
                                ].sort_values('Cote', ascending=False
                                ).rename(columns={
-                                   'Enchere': 'Enchère moy.', 'Tension': 'Demande',
+                                   'Enchere': label_enchere, 'Tension': label_demande,
                                    'Matchs_joues': 'Matchs joués', 'ProbaBut': 'Proba but/arrêt',
                                    '%Titu': '% Titu (estimé)',
                                }).reset_index(drop=True)
@@ -684,7 +716,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                 df_eviter_affiche[['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
                            'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
                            ].rename(columns={
-                               'Enchere': 'Enchère moy.', 'Tension': 'Demande', 'Matchs_joues': 'Matchs joués',
+                               'Enchere': label_enchere, 'Tension': label_demande, 'Matchs_joues': 'Matchs joués',
                                '%Titu': '% Titu (estimé)',
                            }).reset_index(drop=True)
             ),
@@ -715,7 +747,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
                         _table_html(
                             top[cols_affichage + ['ProbaBut']
                                 ].rename(columns={
-                                    'Enchere': 'Enchère moy.', 'Tension': 'Demande',
+                                    'Enchere': label_enchere, 'Tension': label_demande,
                                     'Matchs_joues': 'Matchs joués', 'ProbaBut': nom_colonne_proba,
                                     '%Titu': '% Titu (estimé)',
                                 }).reset_index(drop=True)
