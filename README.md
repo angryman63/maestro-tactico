@@ -147,6 +147,32 @@ DEF : ATT adverse (-1.0) puis MIL adverse (-0.5) puis DEF adverse (-0.5) puis GB
 
 ---
 
+## 🔄 Mise à jour du fichier joueurs (saison 26-27)
+
+**Avant que les 3 exports par taille de ligue (6/8/10 joueurs) ne soient disponibles**,
+`joueurs_fusionne.xlsx` est produit à partir d'un unique export MPGStats via :
+
+```
+python scripts/charger_fichier_unique.py <export_MPGStats.xlsx>
+```
+
+Ce script renomme les colonnes de journée (`D-N` -> `DN`), corrige les noms mal
+transcrits, ET détecte/corrige automatiquement le recyclage de la saison N-1
+observé sur l'export pré-saison MPGStats (D1-D34/Note/Buts/%Titu/Variation
+remplis avec les valeurs 25-26 au lieu de vrais zéros) — en comparant chaque
+chargement au fichier N-1 figé (`data/n1/joueurs_fusionne_25-26.xlsx`). Si les
+valeurs ne ressemblent plus à un recyclage (vraie saison 26-27 commencée), le
+script n'écrase rien et prévient au lieu de corriger à l'aveugle. Relance-le à
+chaque nouveau fichier reçu de MPGStats tant que ce cas de figure dure.
+
+**Une fois les 3 exports par taille disponibles** (vraies enchères), bascule
+sur `python scripts/fusionner_joueurs.py` (déclenché aussi automatiquement par
+le workflow GitHub Actions `.github/workflows/fusion-joueurs.yml` dès qu'un
+push touche les 3 fichiers `L1joueurs26-27_{6,8,10}joueurs.xlsx`) — ne
+réutilise plus `charger_fichier_unique.py` à ce stade.
+
+---
+
 ## 📋 Données
 
 ### Fichiers MPGStats nécessaires
