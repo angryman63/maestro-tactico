@@ -120,12 +120,32 @@ def _pill_fiabilite(val):
     val = '' if pd.isna(val) else str(val).strip()
     if not val:
         return dash()
+    if val == 'Estimé (poste)':
+        return pill(
+            val, 'warn',
+            title="Aucune donnée exploitable cette saison ni la saison passée "
+                  "(ex. promu de Ligue 2) — Note saison/Forme 6J estimées sur la "
+                  "médiane du poste plutôt que sur un vrai historique du joueur."
+        )
+    # 'Basé N-1' : le joueur n'a pas encore joué cette saison, mais dispose
+    # d'un historique N-1 personnel fiable (pas une simple médiane de poste) —
+    # distinct du cas ci-dessus, où on ne sait littéralement rien de lui.
     return pill(
-        val, 'warn',
-        title="Aucune donnée exploitable cette saison ni la saison passée "
-              "(ex. promu de Ligue 2) — Note saison/Forme 6J estimées sur la "
-              "médiane du poste plutôt que sur un vrai historique du joueur."
+        val, 'info',
+        title="Pas encore de match cette saison — Note saison/Forme 6J basées "
+              "sur le propre historique du joueur la saison passée (25-26), "
+              "pas sur une estimation générique du poste."
     )
+
+
+def _pill_alerte(val):
+    val = '' if pd.isna(val) else str(val).strip()
+    if not val:
+        return dash()
+    # 🆕 (jamais titulaire cette saison) n'est pas une alerte de blessure —
+    # style neutre plutôt que 'bad' (rouge), réservé aux vraies blessures/
+    # retours (🚑🩹🏥🐢).
+    return pill(val, 'info' if val.startswith('🆕') else 'bad')
 
 
 def _formater_cellule_hebdo(col, val):
@@ -133,6 +153,8 @@ def _formater_cellule_hebdo(col, val):
         return _pill_regularite(val)
     if col == 'Fiabilité':
         return _pill_fiabilite(val)
+    if col == 'Alerte':
+        return _pill_alerte(val)
     if col == 'Joueur':
         return name_cell(val)
     if pd.isna(val):
@@ -217,6 +239,28 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         else:
             moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
 
+        # Fiabilité : distingue POURQUOI Note saison/Forme 6J sont une estimation
+        # plutôt qu'une vraie mesure de la saison en cours — deux cas bien
+        # différents depuis que predire_note_hybride() (Groupe A) retombe sur le
+        # N-1 personnel d'un joueur même après J8. "Estimé (poste)" : aucune
+        # donnée nulle part (ni cette saison, ni en N-1) — la médiane du poste
+        # est une pure supposition. "Basé N-1" : le joueur n'a pas encore joué
+        # cette saison, mais son propre historique N-1 (mode_forme == "100%_N-1")
+        # sert de base — une estimation nettement plus solide, pas une devinette
+        # générique, donc signalée différemment plutôt que confondue avec la
+        # première.
+        if estimation_poste:
+            fiabilite = 'Estimé (poste)'
+        elif mode_forme == '100%_N-1':
+            fiabilite = 'Basé N-1'
+        else:
+            fiabilite = ''
+
+        # Alerte blessure/retour : jusqu'ici importée mais jamais utilisée sur
+        # Hebdo (contrairement à Mercato et Simuler le match), rendant l'encart
+        # "🏥 Légende blessures" orphelin — même fonction, mêmes badges.
+        alerte = alerte_blessure(row, cols_journees, journee_actuelle)
+
         # Pondération dynamique de la formule "Recommandé" en début de saison :
         # t = poids_actuelle (poids_phase) ramène progressivement la formule vers
         # 0.5/0.3/0.1/0.1 (formule de référence, saison mûre) à mesure que t -> 1.
@@ -236,7 +280,8 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             # %Titu stabilisé affiche un chiffre différent d'une page à l'autre
             # par simple artefact de virgule flottante (ex. 56.99999999999999).
             '% Titulaire': f"{round(prob_jouer*100)}%",
-            'Fiabilité': 'Estimé (poste)' if estimation_poste else '',
+            'Fiabilité': fiabilite,
+            'Alerte': alerte,
             '_score': round(float(score), 2)
         })
 
@@ -275,10 +320,11 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
 | 🩹 | Blessé — moins de 8 matchs manqués |
 | 🏥 | Retour de blessure — 8+ matchs d'absence |
 | 🐢 | Retour de blessure — 4 à 7 matchs d'absence |
+| 🆕 | Pas encore titularisé cette saison (n'a jamais joué — distinct d'un retour de blessure) |
 """)
 
     separateur("RECOMMANDATIONS PAR POSTE")
-    colonnes_affichage = ['Joueur', 'Club', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité']
+    colonnes_affichage = ['Joueur', 'Club', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité', 'Alerte']
 
     if filtrer and mes_joueurs_input.strip():
         tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -286,7 +332,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             "Milieux Déf.", "Défenseurs C.", "Défenseurs L.", "Gardiens"
         ], key="hebdo_postes")
         with tab0:
-            colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité']
+            colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité', 'Alerte']
             top = df_mes_joueurs.sort_values('_score', ascending=False)[colonnes_mes_joueurs + ['_score']]
             if len(top) > 0:
                 _afficher_tableau_triable(

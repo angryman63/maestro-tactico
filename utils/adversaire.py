@@ -223,7 +223,10 @@ def _roster_html(equipe, extra_badge_fn=None):
             note = f"{j['note_pred']:.2f}" if j['note_pred'] else "Données insuffisantes"
             badges = ""
             if j.get('alerte'):
-                badges += pill(j['alerte'], 'bad')
+                # 🆕 (jamais titulaire cette saison) n'est pas une alerte de
+                # blessure — style neutre plutôt que 'bad' (rouge), même
+                # convention que Hebdo/Mercato.
+                badges += pill(j['alerte'], 'info' if j['alerte'].startswith('🆕') else 'bad')
             if j.get('proba_but') is not None:
                 label = "Arrêt" if j.get('poste') == 'G' else "But"
                 badges += pill(

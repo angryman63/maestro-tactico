@@ -102,7 +102,10 @@ def _pill_alerte(val):
     val = '' if pd.isna(val) else str(val).strip()
     if not val:
         return dash()
-    return pill(val, 'bad')
+    # 🆕 (jamais titulaire cette saison) n'est pas une alerte de blessure —
+    # style neutre plutôt que 'bad' (rouge), réservé aux vraies blessures/
+    # retours (🚑🩹🏥🐢).
+    return pill(val, 'info' if val.startswith('🆕') else 'bad')
 
 
 def _formater_cellule(col, val):
@@ -643,6 +646,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
 | 🩹 | Blessé — moins de 8 matchs manqués |
 | 🏥 | Retour de blessure — 8+ matchs d'absence |
 | 🐢 | Retour de blessure — 4 à 7 matchs d'absence |
+| 🆕 | Pas encore titularisé cette saison (n'a jamais joué — distinct d'un retour de blessure) |
 """)
 
     cols_affichage = ['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',

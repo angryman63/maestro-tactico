@@ -129,16 +129,28 @@ def alerte_blessure(row, cols_journees, journee_actuelle=None):
     disponible est trop mince (0-2 matchs pour tout le monde) pour distinguer
     "saison à peine commencée" de "vraiment absent" — le badge est alors
     dénué de sens et supprimé plutôt que d'afficher un retour de blessure
-    généralisé sur un échantillon non significatif."""
+    généralisé sur un échantillon non significatif.
+
+    "Retour" suppose d'avoir déjà joué cette saison puis de s'être arrêté —
+    un joueur qui n'a JAMAIS été titularisé cette saison (matchs_joues == 0 :
+    recrue, promu de Ligue 2, jeune pas encore utilisé...) n'est pas en train
+    de "revenir" de quoi que ce soit ; lui afficher "🏥 Retour" suggérerait à
+    tort une blessure qui n'existe pas. Distingué par un badge dédié (🆕),
+    même seuil (4 matchs calendaires écoulés) mais sans le vocabulaire de
+    retour de blessure."""
     if journee_actuelle is not None and journee_actuelle < 3:
         return ""
     indispo = row.get('Indispo ?', False)
     absences = absences_consecutives(row, cols_journees, journee_actuelle)
+    matchs_joues = compter_matchs(row, cols_journees)
     if indispo == True:
         if absences >= 8:
             return f"🚑 Blessé ({absences} matchs)"
         elif absences >= 1:
             return f"🩹 Blessé ({absences} matchs)"
+    elif matchs_joues == 0:
+        if absences >= 4:
+            return f"🆕 Jamais titulaire ({absences} j.)"
     else:
         if absences >= 8:
             return f"🏥 Retour ({absences} matchs)"
@@ -453,17 +465,30 @@ def get_bandeau_avertissement(journee_actuelle):
 
 def trouver_historique_n1(nom_joueur, poste, df_n1):
     """Retrouve la ligne d'un joueur dans le dataframe de la saison N-1, en
-    matchant sur Nom + Poste. Renvoie None si aucune correspondance ou si
+    matchant d'abord sur Nom + Poste (le plus fiable). Renvoie None si
     plusieurs correspondances (homonymes au même poste, ex. "Camara" ou
     "Coulibaly") : mieux vaut traiter ces cas comme "pas de N-1 fiable"
     (repli automatique de predire_note_hybride) que de risquer d'attribuer
-    l'historique du mauvais joueur."""
+    l'historique du mauvais joueur.
+
+    Si aucune correspondance Nom + Poste n'existe, repli sur Nom seul : un
+    joueur peut changer de poste d'une saison à l'autre (ex. Thomasson, MO
+    en 25-26 -> MD en 26-27) sans que son historique N-1 cesse d'exister ou
+    d'être pertinent — sans ce repli, il devient invisible en N-1 comme s'il
+    s'agissait d'une vraie recrue. Même prudence anti-homonyme : si plusieurs
+    joueurs partagent ce nom (à des postes différents), aucune correspondance
+    n'est fiable, traité comme "non trouvé" plutôt que de deviner."""
+    nom_norm = str(nom_joueur).strip().lower()
     correspondances = df_n1[
-        (df_n1['Joueur'].str.strip().str.lower() == str(nom_joueur).strip().lower()) &
+        (df_n1['Joueur'].str.strip().str.lower() == nom_norm) &
         (df_n1['Poste'] == poste)
     ]
     if len(correspondances) == 1:
         return correspondances.iloc[0]
+    if len(correspondances) == 0:
+        correspondances_nom = df_n1[df_n1['Joueur'].str.strip().str.lower() == nom_norm]
+        if len(correspondances_nom) == 1:
+            return correspondances_nom.iloc[0]
     return None
 
 def taux_regularite(notes_jouees, n_matchs=6):
