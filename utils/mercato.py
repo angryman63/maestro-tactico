@@ -4,7 +4,7 @@ import numpy as np
 from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
-    taux_regularite, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
+    calculer_regularite_brute, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -412,8 +412,18 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
     df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
     df_mercato['EcartTypeNote'] = stats_notes['EcartTypeNote']
+    # Régularité : fonction centralisée (modele.py::calculer_regularite_brute),
+    # avec repli sur le profil N-1 réel du joueur quand la saison en cours n'a
+    # encore aucune note exploitable — même logique que Conseiller Hebdo et
+    # Simuler le match (get_joueur_info), pour qu'un joueur fiable en N-1 ne
+    # reste pas bloqué à 0.0 (et donc que Fiabilite ci-dessous ne se réduise
+    # pas silencieusement à son seul terme %Titu tant que la saison n'a pas
+    # commencé).
     df_mercato['Regularite'] = df.apply(
-        lambda row: taux_regularite([row[col] for col in cols_journees if row[col] > 0]),
+        lambda row: calculer_regularite_brute(
+            row, cols_journees,
+            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1
+        ),
         axis=1
     )
 

@@ -181,16 +181,18 @@ def predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_a
     saison N-1, un appel sur les colonnes saison en cours, puis blend selon
     la grille progressive — positionnée par le nombre de matchs déjà joués
     par CE joueur cette saison, plafonnée par la journée calendaire (0% N-1
-    forcé au-delà de J8) — avec repondération automatique si une des deux
-    sources est indisponible.
+    forcé au-delà de J8 DÈS QU'UNE note actuelle fiable existe) — avec
+    repondération automatique si une des deux sources est indisponible, y
+    compris un repli à 100% N-1 au-delà de J8 pour un joueur sans note
+    actuelle fiable (débutant tardif : le plafond calendaire ne s'applique
+    qu'à la dilution d'une vraie note actuelle par un N-1 périmé, jamais au
+    remplacement d'une absence totale de donnée actuelle).
 
-    Retourne (note, mode) où note peut être None si aucune prédiction n'est
-    possible (aucune donnée exploitable nulle part, ou plafond calendaire
-    atteint sans les 3 notes minimum côté saison actuelle).
+    Retourne (note, mode) où note peut être None seulement si aucune donnée
+    exploitable n'existe nulle part (ni cette saison, ni en N-1).
     """
     matchs_joues = compter_matchs(row_actuelle, cols_actuelle) if row_actuelle is not None else 0
     poids_n1, poids_actuelle = poids_phase(matchs_joues, journee_actuelle)
-    plafond_calendaire_actif = journee_actuelle > 8
 
     note_n1 = predire_note(row_n1, cols_n1) if row_n1 is not None else None
     note_actuelle = predire_note(row_actuelle, cols_actuelle) if row_actuelle is not None else None
@@ -202,10 +204,18 @@ def predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_a
         poids_n1, poids_actuelle = 0.0, 1.0
 
     # Repli automatique vers N-1 si le joueur n'a pas encore de note exploitable
-    # cette saison (ex. blessure) — mais JAMAIS au-delà du plafond calendaire :
-    # passé J8, on ne bascule plus vers N-1, on renvoie "aucune_prediction_possible"
-    # comme le ferait predire_note() seule (cf. règle du débutant tardif).
-    if poids_actuelle > 0 and note_actuelle is None and not plafond_calendaire_actif:
+    # cette saison (ex. blessure, ou débutant tardif qui n'a toujours pas joué) —
+    # y compris au-delà du plafond calendaire (poids_actuelle forcé à 1.0 par
+    # poids_phase() passé J8) : un joueur sans note actuelle fiable (< 3 matchs
+    # cette saison) n'a justement PAS de vraie donnée actuelle à protéger du N-1,
+    # donc rien à perdre à retomber sur son propre historique N-1 réel plutôt que
+    # de renvoyer "aucune_prediction_possible" (ancienne "règle du débutant
+    # tardif" : cf. Ikoné, 23 matchs N-1 à 5.98, jeté à tort après J8 alors que
+    # Mercato, lui, gardait déjà correctement ce N-1 via stabiliser_valeur_saison).
+    # Un joueur qui A une note actuelle fiable (>= 3 matchs) n'est jamais concerné
+    # par ce repli (note_actuelle n'est alors pas None) : le plafond calendaire
+    # continue d'empêcher toute dilution par un N-1 périmé dans ce cas.
+    if poids_actuelle > 0 and note_actuelle is None:
         poids_n1, poids_actuelle = 1.0, 0.0
 
     if poids_n1 == 1.0:
@@ -471,6 +481,26 @@ def taux_regularite(notes_jouees, n_matchs=6):
     nb_flops = sum(1 for note in six_derniers if note < 5.0)
     return 1 - (nb_flops / len(six_derniers))
 
+def calculer_regularite_brute(row, cols_journees, row_n1, cols_journees_n1):
+    """Régularité "brute" (taux_regularite) avec repli sur le profil N-1 du
+    joueur (ses derniers matchs réels de la saison 25-26) quand la saison en
+    cours n'offre encore aucune note exploitable — sans quoi taux_regularite([])
+    vaudrait 0.0 pour tout joueur n'ayant pas encore joué cette saison (pré-saison,
+    ou débutant tardif), une valeur indiscriminante plutôt qu'un reflet du vrai
+    profil du joueur. Centralise la logique déjà en place sur Conseiller Hebdo,
+    réutilisée à l'identique par Mercato (colonne Fiabilite) et Simuler le match
+    (get_joueur_info, formule Capitaine) pour qu'un joueur fiable en N-1 ait une
+    Régularité cohérente sur les 3 pages plutôt que 0.0 sur deux d'entre elles.
+    Sans historique N-1 (row_n1 = None, vraie recrue/inconnu) : comportement
+    inchangé, 0.0 tant qu'aucun match n'a été joué cette saison."""
+    notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
+    if notes_jouees:
+        return taux_regularite(notes_jouees)
+    if row_n1 is not None:
+        notes_jouees_n1 = [row_n1[col] for col in cols_journees_n1 if row_n1[col] > 0]
+        return taux_regularite(notes_jouees_n1)
+    return taux_regularite(notes_jouees)
+
 _SEUILS_TITU_REGULARITE = {"Métronome": 70, "Régulier": 50}
 
 
@@ -615,12 +645,26 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         if moyennes_lignes is not None else 0.0
     )
 
-    # Régularité : taux de fiabilité basé sur le "flop" (taux_regularite), même
-    # plancher de qualité relatif au poste que etiquette_regularite() (modele.py)
-    # — un joueur constamment médiocre (Note saison sous la médiane de son
-    # poste) ne peut pas être considéré "régulier", quel que soit son taux de flop.
-    regularite = taux_regularite(notes_jouees)
+    # Régularité : calculer_regularite_brute() (repli N-1 inclus, même fonction
+    # centralisée que Conseiller Hebdo et Mercato — un joueur fiable en N-1 ne
+    # doit plus rester à 0.0 ici alors qu'il a une vraie Régularité ailleurs),
+    # avec le même plancher de qualité relatif au poste que etiquette_regularite()
+    # (modele.py) — un joueur constamment médiocre (Note saison sous la médiane
+    # de son poste) ne peut pas être considéré "régulier", quel que soit son taux
+    # de flop.
+    regularite = calculer_regularite_brute(
+        row, cols_journees, row_n1, cols_n1 if cols_n1 is not None else cols_journees
+    )
+    # Note saison utilisée pour ce plancher : la colonne 'Note' brute tant que le
+    # joueur a déjà joué cette saison (matchs > 0, une vraie moyenne mesurée) ;
+    # sinon (0 par construction, pas une vraie mesure — ex. débutant tardif
+    # rescapé par predire_note_hybride sur son N-1) on retombe sur note_pred
+    # (même valeur hybride que ci-dessus), pour ne pas comparer un faux zéro
+    # structurel à la médiane du poste et démolir à tort la Régularité d'un
+    # joueur par ailleurs fiable en N-1 (même défaut déjà corrigé côté Hebdo).
     note_saison = pd.to_numeric(row.get('Note', None), errors='coerce')
+    if matchs == 0 and note_pred is not None:
+        note_saison = note_pred
     if (
         notes_mediane_poste is not None and poste in notes_mediane_poste
         and not pd.isna(note_saison) and note_saison < notes_mediane_poste[poste]

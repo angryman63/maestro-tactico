@@ -3,7 +3,8 @@ import pandas as pd
 from modele import (
     nettoyer_note, calculer_clutch, predire_note, alerte_blessure, etiquette_regularite,
     absences_consecutives, predire_note_hybride, get_bandeau_avertissement, trouver_historique_n1,
-    compter_matchs, poids_phase, taux_regularite, normaliser_accents, normaliser_recherche,
+    compter_matchs, poids_phase, calculer_regularite_brute, stabiliser_valeur_saison,
+    normaliser_accents, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -158,6 +159,10 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
     # signalée comme telle (colonne "Fiabilité") qu'une absence totale.
     note_mediane_poste_n1 = df_n1.groupby('Poste')['Note'].median().to_dict()
     note_repli_global_n1 = df_n1['Note'].median()
+    # Repli poste pour %Titu, même convention (médiane N-1) que le repli Note
+    # ci-dessus et que celui déjà utilisé sur Mercato (stabiliser_valeur_saison).
+    titu_mediane_poste_n1 = df_n1.groupby('Poste')['%Titu'].median().to_dict()
+    titu_repli_global_n1 = df_n1['%Titu'].median()
 
     scores = []
     for idx, row in df.iterrows():
@@ -173,47 +178,41 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
                 # ex. aucun gardien recensé) : rien de crédible à afficher.
                 continue
 
-        notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
-        # Repli N-1 (même principe que Note/%Titu/ProbaBut sur Mercato) :
-        # taux_regularite([]) retombe sur 0.0 quand la saison en cours n'a
-        # encore aucune note exploitable (systématique en pré-saison) — et
-        # comme q25/q50/q75 sont alors aussi tous à 0.0 (calculés sur la même
-        # valeur uniforme pour tout le poste), etiquette_regularite() reclasse
-        # tout le monde en "Irrégulier" par construction, sans refléter le
-        # moindre vrai profil. Si un historique N-1 fiable existe, le taux de
-        # flop est calculé sur les derniers matchs RÉELS de la saison 25-26 à
-        # la place. Sans historique N-1 (vraie recrue/inconnu) : comportement
-        # inchangé (0.0, comme avant).
-        if notes_jouees:
-            regularite_brute = taux_regularite(notes_jouees)
-        elif row_n1 is not None:
-            notes_jouees_n1 = [row_n1[col] for col in cols_journees_n1 if row_n1[col] > 0]
-            regularite_brute = taux_regularite(notes_jouees_n1)
-        else:
-            regularite_brute = taux_regularite(notes_jouees)
+        # Régularité : fonction centralisée (modele.py::calculer_regularite_brute,
+        # repli N-1 inclus), désormais partagée à l'identique par Mercato
+        # (Fiabilite) et Simuler le match (formule Capitaine) — un joueur fiable
+        # en N-1 a la même Régularité sur les 3 pages, jamais 0.0 par construction
+        # comme avant sur les deux autres.
+        regularite_brute = calculer_regularite_brute(row, cols_journees, row_n1, cols_journees_n1)
 
-        prob_jouer = row['%Titu'] / 100 if '%Titu' in df.columns else 0.8
-        # %Titu de repli réservé au plancher de fiabilité de
-        # etiquette_regularite() (%Titu >= 70/50 selon le label) : sans lui,
-        # ce plancher reclasserait "Irrégulier" même un joueur dont le vrai
-        # taux de flop N-1 ci-dessus est excellent, puisque son %Titu BRUT de
-        # saison en cours reste à 0 tant qu'il n'a rejoué aucun match.
-        # N'affecte QUE ce plancher interne — la colonne "% Titulaire"
-        # affichée reste la vraie valeur brute de saison en cours, inchangée.
-        if notes_jouees:
-            titu_pct_gate = round(prob_jouer * 100, 1)
-        elif row_n1 is not None and pd.notna(row_n1.get('%Titu')):
-            titu_pct_gate = float(row_n1['%Titu'])
-        else:
-            titu_pct_gate = round(prob_jouer * 100, 1)
+        # % Titulaire affiché : stabilisé N-1 (stabiliser_valeur_saison, même
+        # fonction et même colonne '%Titu' que Mercato) plutôt que la valeur
+        # brute de saison en cours — sans quoi Hebdo et Mercato afficheraient
+        # deux chiffres différents pour le même joueur au même moment (0% brut
+        # ici, valeur N-1 réelle là-bas). Sert aussi de plancher de fiabilité
+        # interne à etiquette_regularite() (%Titu >= 70/50 selon le label) : un
+        # seul calcul pour les deux usages désormais.
+        titu_repli_poste = titu_mediane_poste_n1.get(row['Poste'], titu_repli_global_n1)
+        titu_stabilise = stabiliser_valeur_saison(
+            row_n1, cols_journees_n1, row, cols_journees, journee_actuelle,
+            '%Titu', titu_repli_poste
+        )
+        if titu_stabilise is None or pd.isna(titu_stabilise):
+            titu_stabilise = 0.0
+        prob_jouer = titu_stabilise / 100
 
-        # 'Note saison' reprend elle aussi le repli poste pour ces joueurs :
-        # la laisser à sa valeur brute (0, sans historique) à côté d'une
-        # 'Forme 6J' déjà repliée sur la médiane du poste afficherait deux
-        # chiffres incohérents pour le même joueur (l'un honnête à 0, l'autre
-        # estimé) — les deux colonnes portent la même estimation prudente,
-        # signalée une seule fois via "Fiabilité".
-        if estimation_poste:
+        # 'Note saison' reprend le repli dès que le joueur n'a lui-même encore
+        # joué aucun match cette saison (matchs_joues == 0, colonne 'Note' brute
+        # à 0 par construction, pas une vraie moyenne mesurée) — pas seulement
+        # pour les cas "estimation_poste" (aucune donnée nulle part) : un
+        # débutant tardif rescapé par predire_note_hybride sur son propre N-1
+        # (ex. Ikoné) a lui aussi matchs_joues == 0, et afficherait sinon une
+        # 'Note saison' à 0 à côté d'une 'Forme 6J' à 5.98 — les deux colonnes
+        # portent alors la même estimation (personnelle N-1, ou poste si
+        # vraiment aucune donnée n'existe — signalé par "Fiabilité" dans ce
+        # seul cas).
+        matchs_joues = compter_matchs(row, cols_journees)
+        if matchs_joues == 0:
             moyenne_saison = note_forme
         else:
             moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
@@ -221,7 +220,6 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         # Pondération dynamique de la formule "Recommandé" en début de saison :
         # t = poids_actuelle (poids_phase) ramène progressivement la formule vers
         # 0.5/0.3/0.1/0.1 (formule de référence, saison mûre) à mesure que t -> 1.
-        matchs_joues = compter_matchs(row, cols_journees)
         _, t = poids_phase(matchs_joues, journee_actuelle)
         score = (moyenne_saison * (0.5 * t) + note_forme * (1 - 0.7 * t) +
                  regularite_brute * (0.1 * t) + prob_jouer * (0.1 * t))
@@ -233,8 +231,11 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             'Forme 6J': round(float(note_forme), 2),
             '_regularite_brute': regularite_brute,
             '_titu_pct': round(prob_jouer * 100, 1),
-            '_titu_pct_gate': titu_pct_gate,
-            '% Titulaire': f"{int(prob_jouer*100)}%",
+            # round() (pas int(), qui tronque) : même convention d'arrondi que
+            # Mercato ('% Titu (estimé)', f"{val:.0f}%") pour éviter qu'un même
+            # %Titu stabilisé affiche un chiffre différent d'une page à l'autre
+            # par simple artefact de virgule flottante (ex. 56.99999999999999).
+            '% Titulaire': f"{round(prob_jouer*100)}%",
             'Fiabilité': 'Estimé (poste)' if estimation_poste else '',
             '_score': round(float(score), 2)
         })
@@ -250,7 +251,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             lambda row: etiquette_regularite(
                 row['_regularite_brute'], q25, q50, q75,
                 row['Note saison'], note_mediane_poste,
-                row['_titu_pct_gate']
+                row['_titu_pct']
             ),
             axis=1
         )
