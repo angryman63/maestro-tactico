@@ -11,7 +11,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from modele import (
     nettoyer_note, determiner_journee_actuelle, normaliser_recherche,
-    trouver_historique_n1, predire_note_hybride,
+    trouver_historique_n1, predire_note_hybride, chercher_lignes_joueur,
+    mediane_n1_par_poste,
 )
 from utils.accueil import afficher_accueil
 from utils.hebdo import afficher_hebdo
@@ -345,19 +346,26 @@ def _verifier_noms_joueurs(lignes, df, df_n1, cols_journees, cols_journees_n1, j
     - nom trouvé et éligible -> confirmation discrète.
     Un nom homonyme (plusieurs joueurs réels, ex. postes/clubs différents)
     produit un message par joueur réel trouvé, pas un seul verdict global."""
+    # Conservé pour les suggestions par fragment ci-dessous (chercher_lignes_joueur
+    # ne couvre que la correspondance exacte) — recalculé une fois pour tout le
+    # dataframe plutôt qu'à chaque ligne saisie.
     noms_normalises = df['Joueur'].apply(normaliser_recherche)
     # Même repli ultime que utils/hebdo.py::afficher_hebdo (médiane N-1 du
-    # poste) : un joueur sans Forme 6J exploitable n'est PLUS absent des
-    # recommandations depuis ce repli, sauf si le repli lui-même est
-    # indisponible (poste totalement absent du fichier N-1).
-    note_mediane_poste_n1 = df_n1.groupby('Poste')['Note'].median().to_dict()
-    note_repli_global_n1 = df_n1['Note'].median()
+    # poste, même fonction centralisée modele.py::mediane_n1_par_poste) : un
+    # joueur sans Forme 6J exploitable n'est PLUS absent des recommandations
+    # depuis ce repli, sauf si le repli lui-même est indisponible (poste
+    # totalement absent du fichier N-1).
+    note_mediane_poste_n1, note_repli_global_n1 = mediane_n1_par_poste(df_n1, 'Note')
     resultats = []
     for ligne in lignes:
         ligne_norm = normaliser_recherche(ligne)
         if not ligne_norm:
             continue
-        lignes_exactes = df[noms_normalises == ligne_norm]
+        # chercher_lignes_joueur (modele.py) : même fonction centralisée de
+        # recherche par nom exact (normalisée accents/casse/séparateurs) que
+        # Simuler le match, plutôt qu'une correspondance réécrite localement
+        # qui pourrait un jour diverger de la logique centrale.
+        lignes_exactes = chercher_lignes_joueur(ligne, df)
 
         if len(lignes_exactes) == 0:
             noms_fragments = df.loc[noms_normalises.str.contains(ligne_norm, regex=False), 'Joueur'].unique().tolist()

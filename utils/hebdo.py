@@ -4,7 +4,7 @@ from modele import (
     nettoyer_note, calculer_clutch, predire_note, alerte_blessure, etiquette_regularite,
     absences_consecutives, predire_note_hybride, get_bandeau_avertissement, trouver_historique_n1,
     compter_matchs, poids_phase, calculer_regularite_brute, stabiliser_valeur_saison,
-    normaliser_accents, normaliser_recherche,
+    mediane_n1_par_poste, normaliser_accents, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -179,12 +179,14 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
     # mieux vaut une estimation prudente (médiane N-1 du poste, même
     # convention que le repli poste déjà utilisé sur Mercato) clairement
     # signalée comme telle (colonne "Fiabilité") qu'une absence totale.
-    note_mediane_poste_n1 = df_n1.groupby('Poste')['Note'].median().to_dict()
-    note_repli_global_n1 = df_n1['Note'].median()
+    # mediane_n1_par_poste (modele.py) : fonction centralisée, partagée à
+    # l'identique par Mercato et app.py::_verifier_noms_joueurs — un seul
+    # calcul de médiane N-1 par poste pour les 3, jamais 3 calculs indépendants
+    # qui pourraient un jour diverger silencieusement.
+    note_mediane_poste_n1, note_repli_global_n1 = mediane_n1_par_poste(df_n1, 'Note')
     # Repli poste pour %Titu, même convention (médiane N-1) que le repli Note
     # ci-dessus et que celui déjà utilisé sur Mercato (stabiliser_valeur_saison).
-    titu_mediane_poste_n1 = df_n1.groupby('Poste')['%Titu'].median().to_dict()
-    titu_repli_global_n1 = df_n1['%Titu'].median()
+    titu_mediane_poste_n1, titu_repli_global_n1 = mediane_n1_par_poste(df_n1, '%Titu')
 
     scores = []
     for idx, row in df.iterrows():

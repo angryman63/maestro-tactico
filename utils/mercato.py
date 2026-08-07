@@ -5,6 +5,7 @@ from modele import (
     nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
     calculer_regularite_brute, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
+    mediane_n1_par_poste, calculer_repli_stabilisation, SEUIL_BLESSURE_LONGUE,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 
@@ -364,8 +365,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         # transfert sans passage en Ligue 1 la saison passée, type Openda)
         # retombe sur une estimation crédible pour son poste plutôt qu'un
         # faux zéro brut.
-        note_mediane_poste = df_n1.groupby('Poste')['Note'].median().to_dict()
-        note_repli_global = df_n1['Note'].median()
+        note_mediane_poste, note_repli_global = mediane_n1_par_poste(df_n1, 'Note')
 
     df_mercato['NoteStabilisee'] = df.apply(
         lambda row: stabiliser_valeur_saison(
@@ -388,8 +388,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     titu_repli_global = df_fiable_titu['%Titu'].median()
     if pd.isna(titu_repli_global):
         # Même repli ultime que Note ci-dessus (médiane N-1 par poste).
-        titu_mediane_poste = df_n1.groupby('Poste')['%Titu'].median().to_dict()
-        titu_repli_global = df_n1['%Titu'].median()
+        titu_mediane_poste, titu_repli_global = mediane_n1_par_poste(df_n1, '%Titu')
 
     df_mercato['TituStabilisee'] = df.apply(
         lambda row: stabiliser_valeur_saison(
@@ -435,19 +434,19 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     # ou mauvais match) et un écart-type quasi nul (variance nulle sur un seul
     # échantillon), ce qui resserre artificiellement sa distribution simulée
     # et gonfle son ProbaBut à des valeurs irréalistes (souvent 100%/0%). Les
-    # replis (moyenne/écart-type médians du poste) sont calculés sur les
-    # seuls joueurs à échantillon fiable (>= 3 matchs), pour ne pas être
-    # eux-mêmes biaisés par les petits échantillons qu'ils sont censés corriger.
-    df_fiable = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
-    moyenne_mediane_poste = df_fiable.groupby('Poste')['MoyenneNote'].median().to_dict()
-    ecart_type_mediane_poste = df_fiable.groupby('Poste')['EcartTypeNote'].median().to_dict()
-    moyenne_repli_global = df_fiable['MoyenneNote'].median()
-    ecart_type_repli_global = df_fiable['EcartTypeNote'].median()
-    # Tout début de saison : personne n'a encore >= 3 matchs, df_fiable est vide
-    # et ces médianes valent NaN — repli neutre (note 5/10, écart-type modéré)
-    # plutôt qu'un NaN qui ferait planter simuler_proba_but() (ecart_type <= 0
-    # sur None lève une TypeError) pour tout joueur sans note actuelle NI
-    # historique N-1 (ex. transfert sans historique Ligue 1 : Openda).
+    # replis (moyenne/écart-type médians du poste) sont calculés par la même
+    # fonction centralisée que Simuler le match (modele.py::
+    # calculer_repli_stabilisation, sur les seuls joueurs à échantillon
+    # fiable >= 3 matchs et lignes valides — Cote/Note/Variation/%Titu non
+    # NaN et Cote > 0), pour ne jamais risquer que les deux pages retombent
+    # sur des repli différents.
+    (moyenne_mediane_poste, moyenne_repli_global,
+     ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)
+    # Tout début de saison : personne n'a encore >= 3 matchs, la population
+    # fiable est vide et ces médianes valent NaN — repli neutre (note 5/10,
+    # écart-type modéré) plutôt qu'un NaN qui ferait planter simuler_proba_but()
+    # (ecart_type <= 0 sur None lève une TypeError) pour tout joueur sans note
+    # actuelle NI historique N-1 (ex. transfert sans historique Ligue 1 : Openda).
     if pd.isna(moyenne_repli_global):
         moyenne_repli_global = 5.0
     if pd.isna(ecart_type_repli_global):
@@ -497,13 +496,23 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     #    prix — un joueur pas cher mais très en dessous de son poste reste un
     #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
     mask_note_tres_faible = df_mercato['Note_pct'] <= 0.15
-    # 4. Blessure longue : Indispo=True ET 8+ matchs consécutifs sans jouer (même
-    #    seuil que le badge 🚑 d'alerte_blessure) — indépendant du prix/de la note,
-    #    un joueur durablement indisponible est à éviter au mercato peu importe ses
-    #    statistiques passées (colonnes déjà calculées plus haut : 'Indispo ?' vient
-    #    directement de df, 'Absences_recentes' réutilise absences_consecutives()).
-    mask_indispo_longue = df_mercato['Indispo ?'].fillna(False).astype(bool) & (df_mercato['Absences_recentes'] >= 8)
+    # 4. Blessure longue : Indispo=True ET SEUIL_BLESSURE_LONGUE+ matchs consécutifs
+    #    sans jouer (constante partagée avec le badge 🚑 d'alerte_blessure, modele.py)
+    #    — indépendant du prix/de la note, un joueur durablement indisponible est à
+    #    éviter au mercato peu importe ses statistiques passées (colonnes déjà
+    #    calculées plus haut : 'Indispo ?' vient directement de df, 'Absences_recentes'
+    #    réutilise absences_consecutives()).
+    mask_indispo_longue = (
+        df_mercato['Indispo ?'].fillna(False).astype(bool)
+        & (df_mercato['Absences_recentes'] >= SEUIL_BLESSURE_LONGUE)
+    )
     mask_eviter = mask_cher_decevant | mask_rarement | mask_note_tres_faible | mask_indispo_longue
+    # Masques exposés en colonnes pour que _raison_eviter() (plus bas) les LISE
+    # au lieu de retaper les mêmes seuils en toutes lettres — un seul endroit à
+    # faire évoluer si un seuil "À éviter" change un jour.
+    df_mercato['_cher_decevant'] = mask_cher_decevant
+    df_mercato['_note_tres_faible'] = mask_note_tres_faible
+    df_mercato['_indispo_longue'] = mask_indispo_longue
     df_eviter = df_mercato[mask_eviter].copy()
 
     # --- ProbaBut / ProbaArret (point 1) : Monte Carlo face aux moyennes de ligne de la ligue ---
@@ -703,19 +712,28 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         df_eviter_affiche = df_eviter.copy()
 
         def _raison_eviter(row):
-            # Les 3 critères sont indépendants (OU) : un joueur peut en cumuler
+            # Les 4 critères sont indépendants (OU) : un joueur peut en cumuler
             # plusieurs (ex. cher+décevant ET apparaît rarement) — toutes les
             # raisons qui s'appliquent sont listées, pas seulement la première.
+            # Lit les masques déjà calculés (mask_cher_decevant, etc., exposés en
+            # colonnes '_cher_decevant'/'_note_tres_faible'/'_indispo_longue' plus
+            # haut) plutôt que de retaper les mêmes seuils ici — un seul endroit
+            # à faire évoluer si un seuil "À éviter" change. Accessoirement,
+            # corrige un oubli : "Blessure longue" (mask_indispo_longue) n'était
+            # jusqu'ici jamais listée comme raison, même quand c'était le SEUL
+            # critère qui qualifiait le joueur (Raison affichée vide dans ce cas).
             raisons = []
-            if row['Cote_pct'] > 0.60 and row['Note_pct'] < 0.50:
+            if row['_cher_decevant']:
                 raisons.append(
                     "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
                     else "Cher + note décevante"
                 )
             if row['_rarement_flag']:
                 raisons.append(row['_rarement_motif'])
-            if row['Note_pct'] <= 0.15:
+            if row['_note_tres_faible']:
                 raisons.append("Note très faible pour son poste")
+            if row['_indispo_longue']:
+                raisons.append("Blessure longue")
             return " · ".join(raisons)
 
         df_eviter_affiche['Raison'] = df_eviter_affiche.apply(_raison_eviter, axis=1)

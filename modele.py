@@ -122,6 +122,14 @@ def predire_note(row, cols_journees):
     total_poids = sum(poids[:len(notes_6)])
     return round(sum(n * poids[i] for i, n in enumerate(notes_6)) / total_poids, 2)
 
+# Seuil (en matchs consécutifs manqués) au-delà duquel une indisponibilité
+# est considérée "longue" — partagé entre alerte_blessure() (badge 🚑, ci-
+# dessous) et utils/mercato.py::mask_indispo_longue (critère "Blessure
+# longue" de la stratégie "À éviter"), pour ne jamais risquer de faire
+# diverger les deux un jour sans s'en rendre compte.
+SEUIL_BLESSURE_LONGUE = 8
+
+
 def alerte_blessure(row, cols_journees, journee_actuelle=None):
     """journee_actuelle=None (par défaut) préserve l'ancien comportement pour
     les appelants qui ne le passent pas encore. Sous J3 : même en filtrant les
@@ -144,7 +152,7 @@ def alerte_blessure(row, cols_journees, journee_actuelle=None):
     absences = absences_consecutives(row, cols_journees, journee_actuelle)
     matchs_joues = compter_matchs(row, cols_journees)
     if indispo == True:
-        if absences >= 8:
+        if absences >= SEUIL_BLESSURE_LONGUE:
             return f"🚑 Blessé ({absences} matchs)"
         elif absences >= 1:
             return f"🩹 Blessé ({absences} matchs)"
@@ -152,7 +160,7 @@ def alerte_blessure(row, cols_journees, journee_actuelle=None):
         if absences >= 4:
             return f"🆕 Jamais titulaire ({absences} j.)"
     else:
-        if absences >= 8:
+        if absences >= SEUIL_BLESSURE_LONGUE:
             return f"🏥 Retour ({absences} matchs)"
         elif absences >= 4:
             return f"🐢 Retour ({absences} matchs)"
@@ -166,14 +174,22 @@ def poids_phase(matchs_joues_joueur, journee_calendaire_actuelle, plafond_calend
       manqué des matchs (blessure, retard de transfert, etc.) ;
     - un plafond calendaire dur (si plafond_calendaire=True, le comportement
       par défaut, utilisé par predire_note_hybride pour la prédiction de
-      forme) : au-delà de la journée 8 (journée > 8), la pondération N-1 est
+      forme) : à partir de la journée 8 (journée >= 8), la pondération N-1 est
       TOUJOURS nulle, quel que soit le nombre de matchs du joueur — même
       s'il s'agit littéralement de son 1er match de la saison, joué
       tardivement. plafond_calendaire=False désactive ce plafond (utile pour
       stabiliser un agrégat de saison comme la Note Mercato, où un joueur à
       1-2 matchs reste un petit échantillon à stabiliser quelle que soit la
-      journée calendaire, contrairement à une prédiction de forme hebdomadaire)."""
-    if plafond_calendaire and journee_calendaire_actuelle > 8:
+      journée calendaire, contrairement à une prédiction de forme hebdomadaire).
+
+      Seuil harmonisé avec utils/mercato.py::_rarement_apparition (qui
+      utilisait déjà >= 8, "à partir de la journée 8") — poids_phase()
+      utilisait auparavant > 8 ("au-delà de"), un journée 8 exactement se
+      comportait donc différemment entre les deux, alors que le commentaire
+      de _rarement_apparition affirmait déjà (à tort) partager "le même seuil
+      calendaire que le modèle hybride". >= 8 est repris ici pour rendre
+      cette affirmation vraie."""
+    if plafond_calendaire and journee_calendaire_actuelle >= 8:
         return (0.0, 1.0)
     grille = {
         0: (1.0, 0.0),  # aucun match joué -> comme au tout début (grille J1)
@@ -193,9 +209,9 @@ def predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_a
     saison N-1, un appel sur les colonnes saison en cours, puis blend selon
     la grille progressive — positionnée par le nombre de matchs déjà joués
     par CE joueur cette saison, plafonnée par la journée calendaire (0% N-1
-    forcé au-delà de J8 DÈS QU'UNE note actuelle fiable existe) — avec
+    forcé à partir de J8 DÈS QU'UNE note actuelle fiable existe) — avec
     repondération automatique si une des deux sources est indisponible, y
-    compris un repli à 100% N-1 au-delà de J8 pour un joueur sans note
+    compris un repli à 100% N-1 à partir de J8 pour un joueur sans note
     actuelle fiable (débutant tardif : le plafond calendaire ne s'applique
     qu'à la dilution d'une vraie note actuelle par un N-1 périmé, jamais au
     remplacement d'une absence totale de donnée actuelle).
@@ -410,14 +426,50 @@ def stabiliser_stats_proba_but(row_n1, cols_n1, row_actuelle, cols_actuelle, jou
     ecart_type = poids_n1 * ecart_type_n1 + poids_actuelle * ecart_type_actuelle
     return moyenne, ecart_type
 
+def mediane_n1_par_poste(df_n1, colonne):
+    """Médiane N-1 (saison précédente) d'une colonne, par poste, avec la
+    médiane globale en repli si un poste est absent du fichier N-1 (ex.
+    aucun gardien recensé). Repli ultime partagé par Mercato (Note/%Titu),
+    Conseiller Hebdo (Note/%Titu) et app.py::_verifier_noms_joueurs (Note),
+    utilisé quand aucune médiane de saison en cours n'est encore disponible
+    — centralisé pour que les 3 s'accordent toujours sur la même valeur,
+    plutôt que 3 `df_n1.groupby('Poste')[colonne].median()` indépendants qui
+    pourraient un jour diverger silencieusement si l'un est modifié seul.
+
+    Renvoie (mediane_par_poste: dict, mediane_globale: float)."""
+    mediane_par_poste = df_n1.groupby('Poste')[colonne].median().to_dict()
+    mediane_globale = df_n1[colonne].median()
+    return mediane_par_poste, mediane_globale
+
+
 def calculer_repli_stabilisation(df, cols_journees):
     """Précalcule, une fois pour tout le dataframe chargé, les valeurs de repli
-    par poste utilisées par stabiliser_stats_proba_but() — mêmes conventions que
-    utils/mercato.py::afficher_mercato (médiane de la moyenne/écart-type de notes
-    jouées cette saison, calculée UNIQUEMENT sur les joueurs à échantillon fiable,
-    >= 3 matchs joués, pour ne pas être elles-mêmes biaisées par les petits
-    échantillons qu'elles sont censées corriger). Renvoie (moyenne_mediane_poste,
-    moyenne_repli_global, ecart_type_mediane_poste, ecart_type_repli_global)."""
+    par poste utilisées par stabiliser_stats_proba_but() (médiane de la
+    moyenne/écart-type de notes jouées cette saison, calculée UNIQUEMENT sur
+    les joueurs à échantillon fiable, >= 3 matchs joués, pour ne pas être
+    elles-mêmes biaisées par les petits échantillons qu'elles sont censées
+    corriger).
+
+    Population restreinte au préalable aux lignes valides — Cote/Note/
+    Variation/%Titu non NaN et Cote > 0 — mêmes critères que
+    utils/mercato.py::afficher_mercato (dropna + Cote > 0), pour ne jamais
+    laisser une poignée de lignes structurellement invalides (ex. Cote NaN :
+    2 joueurs concernés en 26-27) fausser silencieusement le repli. Utilisée
+    à la fois par Simuler le match (utils/adversaire.py, sur tout le df) et
+    par Mercato (sur df_mercato, déjà filtré en amont pour d'autres raisons)
+    — centralisée ici avec le MÊME filtre pour que les deux retombent
+    toujours sur la même population, plutôt que deux calculs indépendants
+    sur des populations différentes qui pourraient un jour diverger.
+    Renvoie (moyenne_mediane_poste, moyenne_repli_global,
+    ecart_type_mediane_poste, ecart_type_repli_global)."""
+    colonnes_validite = [c for c in ['Cote', 'Note', 'Variation', '%Titu'] if c in df.columns]
+    df_valide = df.copy()
+    for col in colonnes_validite:
+        df_valide[col] = pd.to_numeric(df_valide[col], errors='coerce')
+    df_valide = df_valide.dropna(subset=colonnes_validite)
+    if 'Cote' in df_valide.columns:
+        df_valide = df_valide[df_valide['Cote'] > 0]
+
     def _stats_ligne(row):
         notes = [row[c] for c in cols_journees if row[c] > 0]
         return pd.Series({
@@ -427,7 +479,7 @@ def calculer_repli_stabilisation(df, cols_journees):
             'poste': row.get('Poste', 'MO'),
         })
 
-    stats = df.apply(_stats_ligne, axis=1)
+    stats = df_valide.apply(_stats_ligne, axis=1)
     fiable = stats[stats['matchs'] >= 3]
 
     moyenne_mediane_poste = fiable.groupby('poste')['moyenne'].median().to_dict()
