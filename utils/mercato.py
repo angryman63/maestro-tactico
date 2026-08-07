@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from modele import (
-    nettoyer_note, compter_matchs, absences_consecutives, alerte_blessure,
+    compter_matchs, absences_consecutives, alerte_blessure,
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
     calculer_regularite_brute, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
     mediane_n1_par_poste, calculer_repli_stabilisation, SEUIL_BLESSURE_LONGUE,
@@ -149,8 +149,9 @@ def _table_html(df):
 
 def _moyenne_ecart_type_notes(row, cols_journees):
     """Moyenne/écart-type des notes jouées cette saison (mêmes conventions que
-    get_stats_joueur_mc). Replie sur la note saison brute (écart-type nul) si
-    le joueur n'a encore aucune note exploitable cette saison."""
+    utils/adversaire.py::_joueur_vers_mc). Replie sur la note saison brute
+    (écart-type nul) si le joueur n'a encore aucune note exploitable cette
+    saison."""
     notes = [row[col] for col in cols_journees if row[col] > 0]
     if not notes:
         return pd.Series({'MoyenneNote': float(row.get('Note', 5.0)), 'EcartTypeNote': 0.0})
@@ -292,10 +293,6 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
     base_cols = ['Joueur', 'Club', 'Poste', 'Cote',
                  'Note', 'Variation', 'Buts', '%Titu', 'Indispo ?']
     df_mercato = df[base_cols].copy()
-    # 'Var Cote' n'est, contrairement à Enchere/AchatT1, jamais affichée nulle
-    # part (colonne interne inutilisée) — NaN en son absence n'a donc pas
-    # besoin du même repli N-1.
-    df_mercato['Var Cote'] = df['Var Cote'] if 'Var Cote' in df.columns else np.nan
 
     if enchere_disponible:
         df_mercato['Enchere'] = df[col_enchere]
@@ -318,7 +315,7 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
         df_mercato['Enchere'] = df.apply(_enchere_n1, axis=1)
         df_mercato['AchatT1'] = df.apply(_achat_n1, axis=1)
 
-    for col in ['Cote', 'Var Cote', 'Enchere', 'AchatT1', 'Note', 'Variation', 'Buts', '%Titu']:
+    for col in ['Cote', 'Enchere', 'AchatT1', 'Note', 'Variation', 'Buts', '%Titu']:
         df_mercato[col] = pd.to_numeric(df_mercato[col], errors='coerce')
 
     df_mercato = df_mercato.dropna(subset=['Cote', 'Note', 'Variation', '%Titu'])

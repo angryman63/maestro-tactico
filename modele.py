@@ -68,13 +68,6 @@ def nettoyer_note(valeur):
     except:
         return 0
 
-def calculer_clutch(row, cols_journees, seuil=7):
-    notes = [row[col] for col in cols_journees if col in row.index]
-    notes_jouees = [n for n in notes if n > 0]
-    if len(notes_jouees) == 0:
-        return 0
-    return len([n for n in notes_jouees if n >= seuil]) / len(notes_jouees)
-
 def compter_matchs(row, cols_journees):
     return sum(1 for col in cols_journees if row[col] > 0)
 
@@ -489,19 +482,6 @@ def calculer_repli_stabilisation(df, cols_journees):
 
     return (moyenne_mediane_poste, moyenne_repli_global,
             ecart_type_mediane_poste, ecart_type_repli_global)
-
-def get_prediction_complete(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle):
-    """
-    Assemble predire_note_hybride() (la note pondérée) et alerte_blessure()
-    (le statut blessure/retour), SANS modifier ni fusionner leur logique
-    interne — les deux fonctions restent indépendantes et réutilisables
-    séparément.
-
-    Retourne (note, mode, alerte).
-    """
-    note, mode = predire_note_hybride(row_n1, cols_n1, row_actuelle, cols_actuelle, journee_actuelle)
-    alerte = alerte_blessure(row_actuelle, cols_actuelle, journee_actuelle) if row_actuelle is not None else ""
-    return note, mode, alerte
 
 def get_bandeau_avertissement(journee_actuelle):
     """Retourne le texte du bandeau, ou None à partir de J7.
@@ -1060,22 +1040,3 @@ def monte_carlo_match(joueurs_moi, joueurs_adv, n_simulations=2000,
     }
 
 
-def get_stats_joueur_mc(info_joueur, cols_journees, df):
-    nom = info_joueur['nom']
-    row = df[df['Joueur'].str.lower() == nom.lower()]
-    if len(row) == 0:
-        return None
-    row = row.iloc[0]
-    notes = [row[col] for col in cols_journees if row[col] > 0]
-    if len(notes) < 3:
-        return None
-    buts = pd.to_numeric(row.get('Buts', 0), errors='coerce')
-    matchs = len(notes)
-    buts_par_match = buts / matchs if matchs > 0 and not pd.isna(buts) else 0
-    return {
-        'nom': nom,
-        'ligne': poste_vers_ligne(info_joueur['poste']),
-        'moyenne': np.mean(notes),
-        'ecart_type': np.std(notes),
-        'buts': buts_par_match
-    }

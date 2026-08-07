@@ -1,10 +1,9 @@
 import streamlit as st
 import pandas as pd
 from modele import (
-    nettoyer_note, calculer_clutch, predire_note, alerte_blessure, etiquette_regularite,
-    absences_consecutives, predire_note_hybride, get_bandeau_avertissement, trouver_historique_n1,
-    compter_matchs, poids_phase, calculer_regularite_brute, stabiliser_valeur_saison,
-    mediane_n1_par_poste, normaliser_accents, normaliser_recherche,
+    alerte_blessure, etiquette_regularite, predire_note_hybride, get_bandeau_avertissement,
+    trouver_historique_n1, compter_matchs, poids_phase, calculer_regularite_brute,
+    stabiliser_valeur_saison, mediane_n1_par_poste, normaliser_accents, normaliser_recherche,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
 

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from modele import (get_joueur_info, chercher_lignes_joueur, poste_vers_ligne, trouver_historique_n1,
                     stabiliser_stats_proba_but, calculer_repli_stabilisation,
-                    monte_carlo_match, get_stats_joueur_mc, calculer_contexte_ligue)
+                    monte_carlo_match, calculer_contexte_ligue)
 from utils.table_style import inject_style, pill, escape, separateur
 
 _MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
