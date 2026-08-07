@@ -338,11 +338,20 @@ def _verifier_noms_joueurs(lignes, df, df_n1, cols_journees, cols_journees_n1, j
     - nom trouvé (un ou plusieurs homonymes) mais sans Forme 6J exploitable
       (trop peu de matchs cette saison et pas d'historique N-1 fiable, même
       logique que trouver_historique_n1/predire_note_hybride dans Hebdo) ->
-      signalé comme absent des recommandations ;
+      Hebdo l'affiche quand même via un repli sur la médiane N-1 du poste
+      (typiquement un promu de Ligue 2, ex. Le Mans/Troyes) : signalé comme
+      tel plutôt que comme absent, pour rester cohérent avec ce qui
+      s'affiche réellement dans les recommandations ;
     - nom trouvé et éligible -> confirmation discrète.
     Un nom homonyme (plusieurs joueurs réels, ex. postes/clubs différents)
     produit un message par joueur réel trouvé, pas un seul verdict global."""
     noms_normalises = df['Joueur'].apply(normaliser_recherche)
+    # Même repli ultime que utils/hebdo.py::afficher_hebdo (médiane N-1 du
+    # poste) : un joueur sans Forme 6J exploitable n'est PLUS absent des
+    # recommandations depuis ce repli, sauf si le repli lui-même est
+    # indisponible (poste totalement absent du fichier N-1).
+    note_mediane_poste_n1 = df_n1.groupby('Poste')['Note'].median().to_dict()
+    note_repli_global_n1 = df_n1['Note'].median()
     resultats = []
     for ligne in lignes:
         ligne_norm = normaliser_recherche(ligne)
@@ -366,7 +375,11 @@ def _verifier_noms_joueurs(lignes, df, df_n1, cols_journees, cols_journees_n1, j
             row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
             note_forme, _ = predire_note_hybride(row_n1, cols_journees_n1, row, cols_journees, journee_actuelle)
             if note_forme is None:
-                resultats.append(('info', f"{identifiant} trouvé mais pas encore assez de données cette saison pour apparaître dans les recommandations."))
+                repli = note_mediane_poste_n1.get(row['Poste'], note_repli_global_n1)
+                if pd.isna(repli):
+                    resultats.append(('info', f"{identifiant} trouvé mais pas encore assez de données cette saison pour apparaître dans les recommandations."))
+                else:
+                    resultats.append(('success', f"{identifiant} trouvé et disponible dans les recommandations (estimation prudente basée sur la médiane du poste, faute de données propres cette saison et la saison passée)."))
             else:
                 resultats.append(('success', f"{identifiant} trouvé et disponible dans les recommandations."))
     return resultats

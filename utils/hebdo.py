@@ -115,9 +115,23 @@ def _pill_regularite(val):
     return pill(val, 'mid')
 
 
+def _pill_fiabilite(val):
+    val = '' if pd.isna(val) else str(val).strip()
+    if not val:
+        return dash()
+    return pill(
+        val, 'warn',
+        title="Aucune donnée exploitable cette saison ni la saison passée "
+              "(ex. promu de Ligue 2) — Note saison/Forme 6J estimées sur la "
+              "médiane du poste plutôt que sur un vrai historique du joueur."
+    )
+
+
 def _formater_cellule_hebdo(col, val):
     if col == 'Régularité':
         return _pill_regularite(val)
+    if col == 'Fiabilité':
+        return _pill_fiabilite(val)
     if col == 'Joueur':
         return name_cell(val)
     if pd.isna(val):
@@ -134,14 +148,30 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
     if bandeau:
         st.warning(bandeau)
 
+    # Repli ultime pour un joueur sans AUCUNE donnée exploitable, ni cette
+    # saison ni en N-1 (predire_note_hybride renvoie alors None) — typiquement
+    # un promu de Ligue 2 (ex. Le Mans, Troyes en 26-27), absent du fichier
+    # N-1 puisqu'il n'était pas en Ligue 1 la saison passée. Auparavant ces
+    # joueurs étaient simplement exclus (`continue`), invisibles sur Hebdo —
+    # mieux vaut une estimation prudente (médiane N-1 du poste, même
+    # convention que le repli poste déjà utilisé sur Mercato) clairement
+    # signalée comme telle (colonne "Fiabilité") qu'une absence totale.
+    note_mediane_poste_n1 = df_n1.groupby('Poste')['Note'].median().to_dict()
+    note_repli_global_n1 = df_n1['Note'].median()
+
     scores = []
     for idx, row in df.iterrows():
         row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
         note_forme, mode_forme = predire_note_hybride(
             row_n1, cols_journees_n1, row, cols_journees, journee_actuelle
         )
-        if note_forme is None:
-            continue
+        estimation_poste = note_forme is None
+        if estimation_poste:
+            note_forme = note_mediane_poste_n1.get(row['Poste'], note_repli_global_n1)
+            if pd.isna(note_forme):
+                # Repli lui-même indisponible (poste totalement absent du N-1,
+                # ex. aucun gardien recensé) : rien de crédible à afficher.
+                continue
 
         notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
         # Repli N-1 (même principe que Note/%Titu/ProbaBut sur Mercato) :
@@ -177,7 +207,16 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         else:
             titu_pct_gate = round(prob_jouer * 100, 1)
 
-        moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
+        # 'Note saison' reprend elle aussi le repli poste pour ces joueurs :
+        # la laisser à sa valeur brute (0, sans historique) à côté d'une
+        # 'Forme 6J' déjà repliée sur la médiane du poste afficherait deux
+        # chiffres incohérents pour le même joueur (l'un honnête à 0, l'autre
+        # estimé) — les deux colonnes portent la même estimation prudente,
+        # signalée une seule fois via "Fiabilité".
+        if estimation_poste:
+            moyenne_saison = note_forme
+        else:
+            moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
 
         # Pondération dynamique de la formule "Recommandé" en début de saison :
         # t = poids_actuelle (poids_phase) ramène progressivement la formule vers
@@ -196,6 +235,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             '_titu_pct': round(prob_jouer * 100, 1),
             '_titu_pct_gate': titu_pct_gate,
             '% Titulaire': f"{int(prob_jouer*100)}%",
+            'Fiabilité': 'Estimé (poste)' if estimation_poste else '',
             '_score': round(float(score), 2)
         })
 
@@ -237,7 +277,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
 """)
 
     separateur("RECOMMANDATIONS PAR POSTE")
-    colonnes_affichage = ['Joueur', 'Club', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire']
+    colonnes_affichage = ['Joueur', 'Club', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité']
 
     if filtrer and mes_joueurs_input.strip():
         tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -245,7 +285,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             "Milieux Déf.", "Défenseurs C.", "Défenseurs L.", "Gardiens"
         ], key="hebdo_postes")
         with tab0:
-            colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire']
+            colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité']
             top = df_mes_joueurs.sort_values('_score', ascending=False)[colonnes_mes_joueurs + ['_score']]
             if len(top) > 0:
                 _afficher_tableau_triable(
