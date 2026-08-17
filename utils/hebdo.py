@@ -116,24 +116,19 @@ def _pill_regularite(val):
 
 
 def _pill_fiabilite(val):
+    # Seule valeur possible désormais : 'Estimé (poste)' — un débutant tardif
+    # avec un vrai historique N-1 personnel (ex. Ikoné) n'affiche plus aucun
+    # badge : sa note N-1 est une vraie donnée le concernant, pas une
+    # estimation à signaler, cohérent avec l'absence de badge pour un joueur
+    # aux données actuelles normales.
     val = '' if pd.isna(val) else str(val).strip()
     if not val:
         return dash()
-    if val == 'Estimé (poste)':
-        return pill(
-            val, 'warn',
-            title="Aucune donnée exploitable cette saison ni la saison passée "
-                  "(ex. promu de Ligue 2) — Note saison/Forme 6J estimées sur la "
-                  "médiane du poste plutôt que sur un vrai historique du joueur."
-        )
-    # 'Basé N-1' : le joueur n'a pas encore joué cette saison, mais dispose
-    # d'un historique N-1 personnel fiable (pas une simple médiane de poste) —
-    # distinct du cas ci-dessus, où on ne sait littéralement rien de lui.
     return pill(
-        val, 'info',
-        title="Pas encore de match cette saison — Note saison/Forme 6J basées "
-              "sur le propre historique du joueur la saison passée (25-26), "
-              "pas sur une estimation générique du poste."
+        val, 'warn',
+        title="Aucune donnée exploitable cette saison ni la saison passée "
+              "(ex. promu de Ligue 2) — Note saison/Forme 6J estimées sur la "
+              "médiane du poste plutôt que sur un vrai historique du joueur."
     )
 
 
@@ -190,7 +185,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
     scores = []
     for idx, row in df.iterrows():
         row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
-        note_forme, mode_forme = predire_note_hybride(
+        note_forme, _mode_forme = predire_note_hybride(
             row_n1, cols_journees_n1, row, cols_journees, journee_actuelle
         )
         estimation_poste = note_forme is None
@@ -240,22 +235,15 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
         else:
             moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
 
-        # Fiabilité : distingue POURQUOI Note saison/Forme 6J sont une estimation
-        # plutôt qu'une vraie mesure de la saison en cours — deux cas bien
-        # différents depuis que predire_note_hybride() (Groupe A) retombe sur le
-        # N-1 personnel d'un joueur même après J8. "Estimé (poste)" : aucune
-        # donnée nulle part (ni cette saison, ni en N-1) — la médiane du poste
-        # est une pure supposition. "Basé N-1" : le joueur n'a pas encore joué
-        # cette saison, mais son propre historique N-1 (mode_forme == "100%_N-1")
-        # sert de base — une estimation nettement plus solide, pas une devinette
-        # générique, donc signalée différemment plutôt que confondue avec la
-        # première.
-        if estimation_poste:
-            fiabilite = 'Estimé (poste)'
-        elif mode_forme == '100%_N-1':
-            fiabilite = 'Basé N-1'
-        else:
-            fiabilite = ''
+        # Fiabilité : signale UNIQUEMENT le cas où aucune donnée n'existe nulle
+        # part (ni cette saison, ni en N-1 — la médiane du poste est une pure
+        # supposition, ex. promu de Ligue 2). Un débutant tardif dont le N-1
+        # personnel sert de base (estimation_poste == False, note_forme vient
+        # de son propre historique) n'affiche plus de badge : sa note N-1 est
+        # une vraie donnée le concernant, pas une estimation à signaler — même
+        # traitement qu'un joueur aux données actuelles normales, qui n'a lui
+        # non plus jamais de badge.
+        fiabilite = 'Estimé (poste)' if estimation_poste else ''
 
         # Alerte blessure/retour : jusqu'ici importée mais jamais utilisée sur
         # Hebdo (contrairement à Mercato et Simuler le match), rendant l'encart
