@@ -375,6 +375,22 @@ h3#bonus-adverse-estime {
     border-bottom: 1px solid #232323;
     white-space: nowrap;
 }
+/* ── Réglage largeur de colonnes (Conseiller Hebdo uniquement) : moins de
+   colonnes et plus étroites que Mercato (8-9 vs 12), donc sur mobile
+   (viewport forcé, cf. app.py) la largeur totale du tableau tombait par
+   coïncidence quasi pile sur la largeur visible (sidebar présente sur cette
+   page, contrairement à Mercato) — la colonne coupée n'affichait qu'un
+   filet de quelques pixels, imperceptible une fois le zoom arrière du
+   navigateur appliqué, et donnait l'impression à tort que le tableau
+   s'arrêtait là. Padding cellules élargi pour que la colonne coupée montre
+   toujours une part substantielle d'elle-même (comme sur Mercato), signal
+   visuel clair qu'il faut faire défiler horizontalement. ── */
+.gs-table-hebdo thead th,
+.gs-table-hebdo tbody td {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
 .gs-table tbody tr:nth-child(odd) { background-color: #161616; }
 .gs-table tbody tr:nth-child(even) { background-color: #202020; }
 .gs-table tbody tr:hover { background-color: #2a2412; }
@@ -754,9 +770,12 @@ def dash(symbol='—'):
     return f'<span class="gs-dash">{symbol}</span>'
 def name_cell(val):
     return f'<span class="gs-name">{escape(val)}</span>'
-def table_html(df, cell_renderer):
+def table_html(df, cell_renderer, extra_class=None):
     """Construit un tableau HTML stylé.
-    cell_renderer(col, val) -> str (html à insérer dans la cellule)."""
+    cell_renderer(col, val) -> str (html à insérer dans la cellule).
+    extra_class : classe CSS additionnelle sur <table>, pour un réglage propre
+    à une page précise (ex. largeur de colonnes) sans affecter .gs-table
+    partout où elle est réutilisée."""
     colonnes = list(df.columns)
     entetes = ''.join(f'<th>{escape(c)}</th>' for c in colonnes)
     lignes = []
@@ -764,8 +783,10 @@ def table_html(df, cell_renderer):
         cellules = ''.join(f'<td>{cell_renderer(c, row[c])}</td>' for c in colonnes)
         lignes.append(f'<tr>{cellules}</tr>')
     corps = ''.join(lignes)
+    classes_table = 'gs-table' + (f' {extra_class}' if extra_class else '')
     return (
-        '<div class="gs-table-wrap"><table class="gs-table">'
+        '<div class="gs-table-wrap">'
+        f'<table class="{classes_table}">'
         f'<thead><tr>{entetes}</tr></thead><tbody>{corps}</tbody>'
         '</table></div>'
     )

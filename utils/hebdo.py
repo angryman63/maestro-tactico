@@ -95,7 +95,10 @@ def _afficher_tableau_triable(df, colonnes_affichage, cell_renderer, key_prefix)
         df_affiche = _trier_tableau(df, colonne_tri, croissant)
 
     st.markdown(
-        table_html(df_affiche[colonnes_affichage].reset_index(drop=True), cell_renderer),
+        table_html(
+            df_affiche[colonnes_affichage].reset_index(drop=True), cell_renderer,
+            extra_class="gs-table-hebdo"
+        ),
         unsafe_allow_html=True
     )
 
