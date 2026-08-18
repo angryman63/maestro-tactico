@@ -571,6 +571,164 @@ ul[data-testid="stSelectboxVirtualDropdownEmpty"] li::before {
     font-family: 'Raleway', sans-serif;
     color: rgba(255, 255, 255, 0.6);
 }
+
+/* ── Bandeau titre de page (Mercato / Simuler le match) : logo/marque +
+   titre + repère contextuel — même identité que le mini-logo sidebar
+   (app.py::LOGO_HTML), en version horizontale compacte. ── */
+.gs-page-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 18px 22px;
+    margin-bottom: 22px;
+    background-color: #1a1a1a;
+    border: 1px solid rgba(200, 168, 75, 0.25);
+    border-radius: 12px;
+}
+.gs-page-header-logo {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #c8a84b, #8a6f2e);
+    color: #141414;
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: 0.05em;
+}
+.gs-page-header-text {
+    flex-grow: 1;
+    min-width: 180px;
+}
+.gs-page-header-title {
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: #ffffff;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+}
+.gs-page-header-tagline {
+    font-family: 'Raleway', sans-serif;
+    font-size: 0.85rem;
+    color: #888888;
+    margin-top: 2px;
+}
+.gs-page-header-context {
+    flex-shrink: 0;
+    font-family: 'Raleway', sans-serif;
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: #c8a84b;
+    background-color: rgba(200, 168, 75, 0.12);
+    border: 1px solid rgba(200, 168, 75, 0.35);
+    border-radius: 20px;
+    padding: 6px 16px;
+    white-space: nowrap;
+}
+
+/* ── Cartouches chiffres clés (Mercato) ── */
+.gs-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 26px;
+}
+.gs-kpi-card {
+    background-color: #161616;
+    border: 1px solid #262626;
+    border-radius: 10px;
+    padding: 16px 18px;
+    min-width: 0;
+    transition: border-color 0.2s ease;
+}
+.gs-kpi-card:hover {
+    border-color: rgba(200, 168, 75, 0.45);
+}
+.gs-kpi-label {
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #888888;
+    margin-bottom: 8px;
+}
+.gs-kpi-value {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #c8a84b;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+.gs-kpi-sub {
+    font-family: 'Raleway', sans-serif;
+    font-size: 0.78rem;
+    color: #666666;
+    margin-top: 4px;
+}
+
+/* ── Cartouches étapes (Simuler le match) — statiques, pas de calcul ── */
+.gs-step-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 26px;
+}
+.gs-step-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background-color: #161616;
+    border: 1px solid #262626;
+    border-radius: 10px;
+    padding: 16px 18px;
+}
+.gs-step-num {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: rgba(200, 168, 75, 0.15);
+    color: #c8a84b;
+    font-family: 'Oswald', sans-serif;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+.gs-step-text {
+    font-family: 'Raleway', sans-serif;
+    font-size: 0.85rem;
+    color: #cccccc;
+    line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+    .gs-kpi-row, .gs-step-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+    .gs-kpi-row, .gs-step-row { grid-template-columns: 1fr; }
+}
+
+/* ── Largeur de page plafonnée (Mercato) : la sidebar est masquée sur cette
+   page (app.py), ce qui libère toute la largeur de l'écran — sans plafond,
+   le bandeau/cartouches/tableau s'étalent sur grand écran au détriment de
+   la lisibilité. st.container(key="mercato_page_wrap") plutôt qu'un simple
+   <div> HTML : seul un vrai conteneur Streamlit englobe correctement tous
+   les widgets natifs rendus à l'intérieur (radios, tableaux...), un <div>
+   ouvert dans un st.markdown ne "contiendrait" pas les st.* suivants. ── */
+.st-key-mercato_page_wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+}
 </style>
 """
 def inject_style():

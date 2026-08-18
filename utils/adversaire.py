@@ -252,6 +252,43 @@ def _roster_html(equipe, extra_badge_fn=None):
 def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
     inject_style()
 
+    # ============================================================
+    # BANDEAU TITRE + REPÈRES D'ÉTAPES — pur habillage, ne touche à aucune
+    # logique du formulaire ci-dessous (radio mode d'analyse, zones de texte,
+    # validation des effectifs) : juste inséré au-dessus.
+    # ============================================================
+    st.markdown(
+        """
+        <div class="gs-page-header">
+          <div class="gs-page-header-logo">MT</div>
+          <div class="gs-page-header-text">
+            <div class="gs-page-header-title">Simuler le match</div>
+            <div class="gs-page-header-tagline">Préparez chaque duel comme un pro.</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        """
+        <div class="gs-step-row">
+          <div class="gs-step-card">
+            <div class="gs-step-num">1</div>
+            <div class="gs-step-text">Choisir le mode d'analyse</div>
+          </div>
+          <div class="gs-step-card">
+            <div class="gs-step-num">2</div>
+            <div class="gs-step-text">Renseigner les deux compos</div>
+          </div>
+          <div class="gs-step-card">
+            <div class="gs-step-num">3</div>
+            <div class="gs-step-text">Recevoir la reco de bonus</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     moyennes_lignes, notes_mediane_poste, buts_mediane_poste = calculer_contexte_ligue(df, cols_journees)
     (moyenne_mediane_poste, moyenne_repli_global,
      ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)

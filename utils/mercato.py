@@ -7,7 +7,7 @@ from modele import (
     calculer_regularite_brute, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
     mediane_n1_par_poste, calculer_repli_stabilisation, SEUIL_BLESSURE_LONGUE,
 )
-from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur
+from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur, escape
 
 # ---------------------------------------------------------------------------
 # Colonnes d'enchères disponibles selon la taille de ligue (fichier joueurs enrichi)
@@ -258,544 +258,635 @@ def _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1):
     return True, "Jouait très peu la saison passée (présomption N-1)"
 
 
-def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
-    inject_style()
-    separateur("TAILLE DE LA LIGUE")
-    # --- Sélecteur de taille de ligue ---
-    taille_choisie = st.radio(
-        "Taille de la ligue :",
-        list(TAILLES_LIGUE.keys()),
-        horizontal=True,
-        key="mercato_taille_ligue",
-        label_visibility="collapsed"
-    )
-    col_enchere, col_achat = _colonnes_taille(df, taille_choisie)
-    # Avant les vrais exports 6/8/10 joueurs (ex. tout début de saison, un seul
-    # fichier source sans colonnes d'enchères) : aucune colonne Enchere/AchatT1
-    # n'existe du tout dans df. Pour un joueur avec un historique N-1 fiable
-    # (même correspondance trouver_historique_n1 que Note/%Titu/ProbaBut), son
-    # enchère/demande RÉELLE de la saison 25-26 sert de référence — utilisée
-    # silencieusement, sans mention technique dans le libellé affiché (même
-    # convention que Note/%Titu : l'utilisateur voit une valeur, pas sa
-    # provenance). Pour un joueur SANS historique N-1 (vraie recrue/inconnu),
-    # aucune donnée n'est inventée (pas de repli sur une médiane de poste,
-    # contrairement à Note/%Titu) : "—"/"?" comme avant, cohérent avec le
-    # principe de ne jamais fabriquer une info pour un joueur dont on ne sait
-    # vraiment rien.
-    # AchatT1 devient une vraie valeur numérique pour les joueurs concernés,
-    # donc AchatT1_norm n'est plus NaN pour eux et calculer_score_mercato()
-    # utilise la formule pondérée normale au lieu de la redistribuer ; ce
-    # mécanisme de redistribution reste actif tel quel pour les inconnus
-    # (AchatT1 toujours NaN pour eux) — son cas d'usage d'origine.
-    enchere_disponible = col_enchere in df.columns and col_achat in df.columns
-    label_enchere = 'Enchère moy.'
-    label_demande = 'Demande'
-
-    if enchere_disponible and taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
-        st.caption(
-            f"Pas de donnée détaillée pour les ligues à {taille_choisie.split()[0]} — "
-            f"affichage de l'enchère moyenne toutes tailles confondues."
+def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, derniere_maj=None):
+    with st.container(key="mercato_page_wrap"):
+        inject_style()
+        separateur("TAILLE DE LA LIGUE")
+        # --- Sélecteur de taille de ligue ---
+        taille_choisie = st.radio(
+            "Taille de la ligue :",
+            list(TAILLES_LIGUE.keys()),
+            horizontal=True,
+            key="mercato_taille_ligue",
+            label_visibility="collapsed"
         )
+        col_enchere, col_achat = _colonnes_taille(df, taille_choisie)
+        # Avant les vrais exports 6/8/10 joueurs (ex. tout début de saison, un seul
+        # fichier source sans colonnes d'enchères) : aucune colonne Enchere/AchatT1
+        # n'existe du tout dans df. Pour un joueur avec un historique N-1 fiable
+        # (même correspondance trouver_historique_n1 que Note/%Titu/ProbaBut), son
+        # enchère/demande RÉELLE de la saison 25-26 sert de référence — utilisée
+        # silencieusement, sans mention technique dans le libellé affiché (même
+        # convention que Note/%Titu : l'utilisateur voit une valeur, pas sa
+        # provenance). Pour un joueur SANS historique N-1 (vraie recrue/inconnu),
+        # aucune donnée n'est inventée (pas de repli sur une médiane de poste,
+        # contrairement à Note/%Titu) : "—"/"?" comme avant, cohérent avec le
+        # principe de ne jamais fabriquer une info pour un joueur dont on ne sait
+        # vraiment rien.
+        # AchatT1 devient une vraie valeur numérique pour les joueurs concernés,
+        # donc AchatT1_norm n'est plus NaN pour eux et calculer_score_mercato()
+        # utilise la formule pondérée normale au lieu de la redistribuer ; ce
+        # mécanisme de redistribution reste actif tel quel pour les inconnus
+        # (AchatT1 toujours NaN pour eux) — son cas d'usage d'origine.
+        enchere_disponible = col_enchere in df.columns and col_achat in df.columns
+        label_enchere = 'Enchère moy.'
+        label_demande = 'Demande'
 
-    base_cols = ['Joueur', 'Club', 'Poste', 'Cote',
-                 'Note', 'Variation', 'Buts', '%Titu', 'Indispo ?']
-    df_mercato = df[base_cols].copy()
+        if enchere_disponible and taille_choisie != "Toutes tailles" and TAILLES_LIGUE[taille_choisie]["enchere"] not in df.columns:
+            st.caption(
+                f"Pas de donnée détaillée pour les ligues à {taille_choisie.split()[0]} — "
+                f"affichage de l'enchère moyenne toutes tailles confondues."
+            )
 
-    if enchere_disponible:
-        df_mercato['Enchere'] = df[col_enchere]
-        df_mercato['AchatT1'] = df[col_achat]
-    else:
-        col_enchere_n1, col_achat_n1 = _colonnes_taille(df_n1, taille_choisie)
+        base_cols = ['Joueur', 'Club', 'Poste', 'Cote',
+                     'Note', 'Variation', 'Buts', '%Titu', 'Indispo ?']
+        df_mercato = df[base_cols].copy()
 
-        def _enchere_n1(row):
-            row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
-            if row_n1 is not None and pd.notna(row_n1.get(col_enchere_n1)):
-                return row_n1[col_enchere_n1]
-            return np.nan
-
-        def _achat_n1(row):
-            row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
-            if row_n1 is not None and pd.notna(row_n1.get(col_achat_n1)):
-                return row_n1[col_achat_n1]
-            return np.nan
-
-        df_mercato['Enchere'] = df.apply(_enchere_n1, axis=1)
-        df_mercato['AchatT1'] = df.apply(_achat_n1, axis=1)
-
-    for col in ['Cote', 'Enchere', 'AchatT1', 'Note', 'Variation', 'Buts', '%Titu']:
-        df_mercato[col] = pd.to_numeric(df_mercato[col], errors='coerce')
-
-    df_mercato = df_mercato.dropna(subset=['Cote', 'Note', 'Variation', '%Titu'])
-    df_mercato = df_mercato[df_mercato['Cote'] > 0]
-
-    nb_journees = len(cols_journees)
-    seuil_matchs = int(nb_journees * 0.40)
-
-    df_mercato['Matchs_joues'] = df.apply(
-        lambda row: compter_matchs(row, cols_journees), axis=1)
-    df_mercato['Absences_recentes'] = df.apply(
-        lambda row: absences_consecutives(row, cols_journees, journee_actuelle), axis=1)
-    df_mercato['Alerte'] = df.apply(
-        lambda row: alerte_blessure(row, cols_journees, journee_actuelle), axis=1)
-    df_mercato['Ratio'] = df_mercato['Note'] / df_mercato['Cote']  # gardée pour affichage éventuel, plus utilisée dans les scores
-
-    # Note stabilisée (point 9) : la Note brute d'un joueur à 1-2 matchs joués
-    # cette saison n'est pas fiable (un seul bon match suffit à la faire
-    # décoller) — on la mélange avec sa Note de saison N-1 selon la même
-    # grille progressive (poids_phase) que predire_note_hybride(), mais
-    # appliquée à la moyenne de saison plutôt qu'à la prédiction pondérée
-    # récente de predire_note() : ça stabilise les petits échantillons sans
-    # jamais réintroduire de biais de forme récente (Mercato n'utilise
-    # volontairement pas de Forme 6J). Utilisée dans les formules de score/
-    # percentile ci-dessous, ET dans la colonne 'Note' affichée (remplacée par
-    # la valeur stabilisée juste après TituStabilisee, cf. plus bas) : la
-    # moyenne brute de saison n'a aucun sens tant que la saison n'a pas
-    # commencé (0 pour tout le monde), contrairement à Buts/Matchs joués qui
-    # restent de vraies informations factuelles même à 0.
-    #
-    # Le repli poste (médiane de Note, calculé sur les joueurs à échantillon
-    # fiable — >= 3 matchs cette saison) sert aussi de garde-fou côté N-1 :
-    # si l'historique N-1 d'un joueur repose lui-même sur peu de matchs, il
-    # est mélangé à ce repli plutôt que transféré tel quel (cf. docstring de
-    # stabiliser_valeur_saison).
-    df_fiable_note = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
-    note_mediane_poste = df_fiable_note.groupby('Poste')['Note'].median().to_dict()
-    note_repli_global = df_fiable_note['Note'].median()
-    if pd.isna(note_repli_global):
-        # Tout début de saison : personne n'a encore >= 3 matchs, le repli
-        # "saison en cours" est vide -- repli sur la médiane N-1 par poste
-        # (données réelles, disponibles indépendamment de l'avancement de la
-        # saison en cours), pour qu'un joueur sans historique N-1 propre (ex.
-        # transfert sans passage en Ligue 1 la saison passée, type Openda)
-        # retombe sur une estimation crédible pour son poste plutôt qu'un
-        # faux zéro brut.
-        note_mediane_poste, note_repli_global = mediane_n1_par_poste(df_n1, 'Note')
-
-    df_mercato['NoteStabilisee'] = df.apply(
-        lambda row: stabiliser_valeur_saison(
-            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
-            row, cols_journees, journee_actuelle, 'Note',
-            note_mediane_poste.get(row['Poste'], note_repli_global)
-        ),
-        axis=1
-    )
-    df_mercato['NoteStabilisee'] = df_mercato['NoteStabilisee'].fillna(df_mercato['Note'])
-
-    # %Titu stabilisé (même principe que NoteStabilisee, même fonction générique) :
-    # contrairement à Note, %Titu brut n'a AUCUN autre repli N-1 dans tout le code —
-    # utilisé tel quel, il resterait bloqué à 0 pour 100% des joueurs tant qu'aucun
-    # match 26-27 n'est joué (0 est la valeur brute correcte, mais rend Stars/
-    # Valeurs sûres/Pépites structurellement vides puisque ces catégories exigent
-    # %Titu >= 50/60 : aucun joueur ne peut jamais les atteindre sans ce repli).
-    df_fiable_titu = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
-    titu_mediane_poste = df_fiable_titu.groupby('Poste')['%Titu'].median().to_dict()
-    titu_repli_global = df_fiable_titu['%Titu'].median()
-    if pd.isna(titu_repli_global):
-        # Même repli ultime que Note ci-dessus (médiane N-1 par poste).
-        titu_mediane_poste, titu_repli_global = mediane_n1_par_poste(df_n1, '%Titu')
-
-    df_mercato['TituStabilisee'] = df.apply(
-        lambda row: stabiliser_valeur_saison(
-            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
-            row, cols_journees, journee_actuelle, '%Titu',
-            titu_mediane_poste.get(row['Poste'], titu_repli_global)
-        ),
-        axis=1
-    )
-    df_mercato['TituStabilisee'] = df_mercato['TituStabilisee'].fillna(df_mercato['%Titu'])
-
-    # Affichage : les colonnes visibles 'Note' et '%Titu' montrent désormais
-    # la version stabilisée (100% N-1 tant que la saison en cours n'a rien à
-    # offrir) plutôt que la valeur brute de saison en cours (0.00/0% pour
-    # tout le monde en pré-saison, sans aucun sens pour l'utilisateur) —
-    # cohérent avec le score/les seuils de catégorie, qui utilisent déjà ces
-    # mêmes colonnes stabilisées. 'Buts' et 'Matchs_joues' restent bruts : ce
-    # sont de vraies informations factuelles sur la saison en cours (0 y est
-    # honnête), pas des estimations à stabiliser.
-    df_mercato['Note'] = df_mercato['NoteStabilisee']
-    df_mercato['%Titu'] = df_mercato['TituStabilisee']
-
-    stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
-    df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
-    df_mercato['EcartTypeNote'] = stats_notes['EcartTypeNote']
-    # Régularité : fonction centralisée (modele.py::calculer_regularite_brute),
-    # avec repli sur le profil N-1 réel du joueur quand la saison en cours n'a
-    # encore aucune note exploitable — même logique que Conseiller Hebdo et
-    # Simuler le match (get_joueur_info), pour qu'un joueur fiable en N-1 ne
-    # reste pas bloqué à 0.0 (et donc que Fiabilite ci-dessous ne se réduise
-    # pas silencieusement à son seul terme %Titu tant que la saison n'a pas
-    # commencé).
-    df_mercato['Regularite'] = df.apply(
-        lambda row: calculer_regularite_brute(
-            row, cols_journees,
-            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1
-        ),
-        axis=1
-    )
-
-    # Moyenne/écart-type stabilisés (même principe que NoteStabilisee) : un
-    # joueur à 1-2 matchs joués a une moyenne non représentative (un seul bon
-    # ou mauvais match) et un écart-type quasi nul (variance nulle sur un seul
-    # échantillon), ce qui resserre artificiellement sa distribution simulée
-    # et gonfle son ProbaBut à des valeurs irréalistes (souvent 100%/0%). Les
-    # replis (moyenne/écart-type médians du poste) sont calculés par la même
-    # fonction centralisée que Simuler le match (modele.py::
-    # calculer_repli_stabilisation, sur les seuls joueurs à échantillon
-    # fiable >= 3 matchs et lignes valides — Cote/Note/Variation/%Titu non
-    # NaN et Cote > 0), pour ne jamais risquer que les deux pages retombent
-    # sur des repli différents.
-    (moyenne_mediane_poste, moyenne_repli_global,
-     ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)
-    # Tout début de saison : personne n'a encore >= 3 matchs, la population
-    # fiable est vide et ces médianes valent NaN — repli neutre (note 5/10,
-    # écart-type modéré) plutôt qu'un NaN qui ferait planter simuler_proba_but()
-    # (ecart_type <= 0 sur None lève une TypeError) pour tout joueur sans note
-    # actuelle NI historique N-1 (ex. transfert sans historique Ligue 1 : Openda).
-    if pd.isna(moyenne_repli_global):
-        moyenne_repli_global = 5.0
-    if pd.isna(ecart_type_repli_global):
-        ecart_type_repli_global = 1.0
-
-    stats_stabilisees = df.apply(
-        lambda row: stabiliser_stats_proba_but(
-            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
-            row, cols_journees, journee_actuelle,
-            moyenne_mediane_poste.get(row['Poste'], moyenne_repli_global),
-            ecart_type_mediane_poste.get(row['Poste'], ecart_type_repli_global)
-        ),
-        axis=1, result_type='expand'
-    )
-    df_mercato['MoyenneStabilisee'] = stats_stabilisees[0]
-    df_mercato['EcartTypeStabilise'] = stats_stabilisees[1]
-
-    # --- Tension du marché (à partir du % achat T1) ---
-    df_mercato['Tension'] = df_mercato['AchatT1'].apply(_tension)
-
-    # --- Rangs percentile Cote/Note par poste (réutilisés par "À éviter" et par les
-    # seuils de catégorie plus bas) ---
-    df_mercato['Cote_pct'] = df_mercato.groupby('Poste')['Cote'].rank(pct=True)
-    df_mercato['Note_pct'] = df_mercato.groupby('Poste')['NoteStabilisee'].rank(pct=True)
-
-    # À éviter — 3 critères indépendants (logique OU) : un seul suffit à qualifier
-    # le joueur, peu importe les autres. Calculé en mask pour pouvoir exclure ces
-    # joueurs des 4 autres stratégies plus bas (mutuellement exclusif, cf. mask_stars
-    # etc.) — un joueur "à éviter" n'apparaît jamais ailleurs, quel que soit le
-    # critère qui l'y a placé.
-    # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
-    #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
-    mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
-    # 2. Joue très peu (matchs_joues / journee_actuelle < 20%), à partir
-    #    de la journée 8 — même seuil calendaire que celui déjà utilisé par le
-    #    modèle hybride (poids_phase, plafond_calendaire=True). Avant J8, repli
-    #    sur une présomption basée sur l'historique N-1 (cf. _rarement_apparition) :
-    #    aucun repli fabriqué en l'absence d'historique N-1 fiable.
-    rarement = df_mercato.apply(
-        lambda row: _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1),
-        axis=1, result_type='expand'
-    )
-    df_mercato['_rarement_flag'] = rarement[0]
-    df_mercato['_rarement_motif'] = rarement[1]
-    mask_rarement = df_mercato['_rarement_flag']
-    # 3. Particulièrement mauvais pour son poste (Note_pct <= 15%), peu importe le
-    #    prix — un joueur pas cher mais très en dessous de son poste reste un
-    #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
-    mask_note_tres_faible = df_mercato['Note_pct'] <= 0.15
-    # 4. Blessure longue : Indispo=True ET SEUIL_BLESSURE_LONGUE+ matchs consécutifs
-    #    sans jouer (constante partagée avec le badge 🚑 d'alerte_blessure, modele.py)
-    #    — indépendant du prix/de la note, un joueur durablement indisponible est à
-    #    éviter au mercato peu importe ses statistiques passées (colonnes déjà
-    #    calculées plus haut : 'Indispo ?' vient directement de df, 'Absences_recentes'
-    #    réutilise absences_consecutives()).
-    mask_indispo_longue = (
-        df_mercato['Indispo ?'].fillna(False).astype(bool)
-        & (df_mercato['Absences_recentes'] >= SEUIL_BLESSURE_LONGUE)
-    )
-    mask_eviter = mask_cher_decevant | mask_rarement | mask_note_tres_faible | mask_indispo_longue
-    # Masques exposés en colonnes pour que _raison_eviter() (plus bas) les LISE
-    # au lieu de retaper les mêmes seuils en toutes lettres — un seul endroit à
-    # faire évoluer si un seuil "À éviter" change un jour.
-    df_mercato['_cher_decevant'] = mask_cher_decevant
-    df_mercato['_note_tres_faible'] = mask_note_tres_faible
-    df_mercato['_indispo_longue'] = mask_indispo_longue
-    df_eviter = df_mercato[mask_eviter].copy()
-
-    # --- ProbaBut / ProbaArret (point 1) : Monte Carlo face aux moyennes de ligne de la ligue ---
-    df_mercato['Ligne'] = df_mercato['Poste'].apply(poste_vers_ligne)
-    moyennes_lignes = df_mercato.groupby('Ligne')['MoyenneNote'].mean().to_dict()
-    for ligne in ['ATT', 'MIL', 'DEF', 'GB']:
-        moyennes_lignes.setdefault(ligne, 5.0)
-
-    df_mercato['ProbaBut'] = df_mercato.apply(
-        lambda row: simuler_proba_but(
-            row['MoyenneStabilisee'], row['EcartTypeStabilise'], row['Poste'], moyennes_lignes
-        ),
-        axis=1
-    )
-
-    # --- Variation_residu (point 4) : résidu de Variation ~ Note + Cote ---
-    X = np.column_stack([
-        np.ones(len(df_mercato)),
-        df_mercato['NoteStabilisee'].to_numpy(dtype=float),
-        df_mercato['Cote'].to_numpy(dtype=float),
-    ])
-    y = df_mercato['Variation'].to_numpy(dtype=float)
-    coeffs, *_ = np.linalg.lstsq(X, y, rcond=None)
-    df_mercato['Variation_residu'] = y - X @ coeffs
-
-    # --- Normalisation en rang percentile, séparément par poste (point 5) ---
-    for col in ['ProbaBut', 'Variation_residu', 'AchatT1']:
-        df_mercato[f'{col}_norm'] = df_mercato.groupby('Poste')[col].rank(pct=True)
-
-    for strategie in ['stars', 'valeurs_sures', 'equilibre', 'pepites']:
-        df_mercato[f'Score_{strategie}'] = df_mercato.apply(
-            lambda row: calculer_score_mercato(row, strategie), axis=1
-        )
-
-    # --- Seuils de catégorie par poste, en RANG PERCENTILE (point 8) — 4 critères
-    # RÉELLEMENT distincts (pas 3 bandes d'un même score, cf. correction ci-dessous) :
-    # Stars = chers ET excellents ; Valeurs sûres = prix moyen-élevé ET fiables
-    # (%Titu/régularité) ; Pépites = pas chers ET corrects ; Équilibre = catégorie
-    # résiduelle (tout le reste), pour garantir que Stars+Valeurs+Équilibre+Pépites
-    # couvrent 100% de chaque poste, sans trou. (Note_pct/Cote_pct déjà calculés
-    # plus haut, réutilisés ici tels quels.)
-
-    # Fiabilité (Valeurs sûres) : mélange %Titu (dispo) + régularité (constance des
-    # notes), percentilée par poste — distincte de "Note" (qui mesure l'excellence,
-    # pas la fiabilité).
-    df_mercato['Fiabilite'] = 0.6 * (df_mercato['TituStabilisee'] / 100) + 0.4 * df_mercato['Regularite']
-    df_mercato['Fiabilite_pct'] = df_mercato.groupby('Poste')['Fiabilite'].rank(pct=True)
-
-    # Score pépite : prix bas (rang inversé) + note correcte, re-percentilé par poste
-    # pour garantir un palier "top X%" exact (la combinaison brute n'est pas uniforme).
-    #
-    # Calculé UNIQUEMENT parmi les joueurs qui passent déjà le filtre de titularisation
-    # de Pépites (%Titu >= 50) au sein du même poste — pas sur le poste entier. Sinon,
-    # les joueurs jamais utilisés (prix plancher mécanique, souvent 3e/4e choix) polluent
-    # le haut du classement "pas cher" avec une cherté nulle qu'ils n'ont jamais eu à
-    # justifier par du temps de jeu, écrasant le rang des joueurs qui jouent réellement.
-    # Diagnostic Gardiens : 32% de gardiens jamais utilisés cette saison, tous au prix
-    # plancher du poste, contre seulement 5-10% sur les autres postes — assez pour que
-    # le meilleur gardien réellement titulaire ne dépasse jamais le seuil de 0.85 alors
-    # qu'il le devrait. Restreindre le pourcentile à la sous-population qui joue déjà
-    # élimine cette pollution sur tous les postes, uniformément (effet mineur ailleurs,
-    # où la proportion de joueurs jamais utilisés est bien plus faible).
-    mask_titu_pepites = df_mercato['TituStabilisee'] >= 50
-    df_actifs = df_mercato.loc[mask_titu_pepites]
-    cote_pct_actifs = df_actifs.groupby('Poste')['Cote'].rank(pct=True)
-    note_pct_actifs = df_actifs.groupby('Poste')['NoteStabilisee'].rank(pct=True)
-    score_pepite_actifs = 0.6 * (1 - cote_pct_actifs) + 0.4 * note_pct_actifs
-    df_mercato['Score_pepite_pct'] = np.nan
-    df_mercato.loc[mask_titu_pepites, 'Score_pepite_pct'] = (
-        score_pepite_actifs.groupby(df_actifs['Poste']).rank(pct=True)
-    )
-
-    mask_stars = (
-        (df_mercato['Cote_pct'] >= 0.95) &
-        (df_mercato['Note_pct'] >= 0.85) &
-        (df_mercato['TituStabilisee'] >= 60) &
-        (df_mercato['Tension'] != "Très peu demandé") &
-        ~mask_eviter
-    )
-    # Pépites calculé avant Valeurs sûres : en cas de chevauchement (joueur cher-moyen
-    # ET fiable ET par ailleurs "pas cher + correct" pour son poste), Pépites prime —
-    # son critère de prix est le plus objectif et le plus attendu par un utilisateur
-    # qui cherche justement un bon coup pas cher.
-    mask_pepites = (
-        (df_mercato['Score_pepite_pct'] >= 0.85) &
-        (df_mercato['TituStabilisee'] >= 50) &
-        ~mask_eviter
-    )
-    mask_valeurs = (
-        (df_mercato['Cote_pct'] >= 0.50) & (df_mercato['Cote_pct'] < 0.85) &
-        (df_mercato['Fiabilite_pct'] >= 0.60) &
-        (df_mercato['TituStabilisee'] >= 60) &
-        ~mask_eviter &
-        ~mask_pepites
-    )
-    # Équilibre = tout le reste (catégorie résiduelle, aucun critère propre) : garantit
-    # structurellement qu'aucun joueur n'est absent des 4 stratégies combinées. "À
-    # éviter" en est explicitement exclu aussi (catégories mutuellement exclusives :
-    # un joueur "à éviter" n'apparaît nulle part ailleurs).
-    mask_equilibre = ~mask_stars & ~mask_valeurs & ~mask_pepites & ~mask_eviter
-
-    # Étiquette de catégorie par joueur (les 5 masques sont mutuellement exclusifs,
-    # cf. plus haut) — utilisée par la recherche globale ci-dessous pour indiquer
-    # dans quelle stratégie chaque résultat apparaît, sans dépendre de l'onglet
-    # actuellement sélectionné.
-    df_mercato['Categorie'] = np.select(
-        [mask_stars, mask_valeurs, mask_pepites, mask_eviter, mask_equilibre],
-        ['Stars', 'Valeurs sûres', 'Pépites', 'À éviter', 'Équilibre'],
-        default='?'
-    )
-
-    df_stars = df_mercato[mask_stars].copy()
-    df_valeurs = df_mercato[mask_valeurs].copy()
-    df_pepites = df_mercato[mask_pepites].copy()
-    df_equilibre = df_mercato[mask_equilibre].copy()
-
-    separateur("STRATÉGIE MERCATO")
-    # Sélection stratégie
-    strategie_choisie = st.radio(
-        "Stratégie mercato :",
-        ["Stars", "Valeurs sûres", "Équilibre", "Pépites", "À éviter"],
-        horizontal=True,
-        key="mercato_strategie",
-        label_visibility="collapsed"
-    )
-
-    recherche_joueur = st.text_input(
-        "🔎 Rechercher un joueur",
-        key="mercato_recherche_joueur",
-        placeholder="Nom du joueur…",
-        help="Recherche sur tous les postes et toutes les catégories (Stars/Valeurs sûres/"
-             "Équilibre/Pépites/À éviter) à la fois — inutile de changer d'onglet au préalable."
-    ).strip()
-
-    with st.expander("🏥 Légende blessures"):
-        st.markdown("""
-|  | Statut |
-|---|---|
-| 🚑 | Blessé — 8+ matchs manqués |
-| 🩹 | Blessé — moins de 8 matchs manqués |
-| 🏥 | Retour de blessure — 8+ matchs d'absence |
-| 🐢 | Retour de blessure — 4 à 7 matchs d'absence |
-| 🆕 | Pas encore titularisé cette saison (n'a jamais joué — distinct d'un retour de blessure) |
-""")
-
-    cols_affichage = ['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
-                       'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte']
-
-    strategie_map = {
-        "Stars": ('stars', df_stars),
-        "Valeurs sûres": ('valeurs_sures', df_valeurs),
-        "Équilibre": ('equilibre', df_equilibre),
-        "Pépites": ('pepites', df_pepites),
-    }
-
-    if recherche_joueur:
-        # Recherche globale (tous postes et toutes catégories confondus) : ne
-        # dépend ni de la stratégie ni de l'onglet poste sélectionné, pour que
-        # l'utilisateur n'ait pas à cliquer onglet par onglet pour retrouver un
-        # joueur précis. La colonne Catégorie indique où il apparaît réellement
-        # (un même nom peut correspondre à plusieurs joueurs différents, dans
-        # des catégories/postes distincts — chacun listé sur sa propre ligne).
-        # Comparaison normalisée (accents + casse + séparateurs) : sans quoi un nom
-        # tapé sans accent (ex. "Said" au lieu de "Saïd") ne trouverait rien, alors
-        # que str.contains(case=False) ne gère que la casse, pas les accents — et un
-        # nom composé tapé avec le mauvais séparateur (ex. "Saint Maximin" ou
-        # "SaintMaximin" au lieu de "Saint-Maximin") ne trouverait rien non plus.
-        noms_normalises = df_mercato['Joueur'].apply(normaliser_recherche)
-        recherche_normalisee = normaliser_recherche(recherche_joueur)
-        resultats = df_mercato[
-            noms_normalises.str.contains(recherche_normalisee, na=False, regex=False)
-        ].copy()
-        if len(resultats) == 0:
-            st.info("Aucun joueur trouvé.")
+        if enchere_disponible:
+            df_mercato['Enchere'] = df[col_enchere]
+            df_mercato['AchatT1'] = df[col_achat]
         else:
-            resultats['ProbaBut'] = resultats['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
+            col_enchere_n1, col_achat_n1 = _colonnes_taille(df_n1, taille_choisie)
+
+            def _enchere_n1(row):
+                row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+                if row_n1 is not None and pd.notna(row_n1.get(col_enchere_n1)):
+                    return row_n1[col_enchere_n1]
+                return np.nan
+
+            def _achat_n1(row):
+                row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+                if row_n1 is not None and pd.notna(row_n1.get(col_achat_n1)):
+                    return row_n1[col_achat_n1]
+                return np.nan
+
+            df_mercato['Enchere'] = df.apply(_enchere_n1, axis=1)
+            df_mercato['AchatT1'] = df.apply(_achat_n1, axis=1)
+
+        for col in ['Cote', 'Enchere', 'AchatT1', 'Note', 'Variation', 'Buts', '%Titu']:
+            df_mercato[col] = pd.to_numeric(df_mercato[col], errors='coerce')
+
+        df_mercato = df_mercato.dropna(subset=['Cote', 'Note', 'Variation', '%Titu'])
+        df_mercato = df_mercato[df_mercato['Cote'] > 0]
+
+        nb_journees = len(cols_journees)
+        seuil_matchs = int(nb_journees * 0.40)
+
+        df_mercato['Matchs_joues'] = df.apply(
+            lambda row: compter_matchs(row, cols_journees), axis=1)
+        df_mercato['Absences_recentes'] = df.apply(
+            lambda row: absences_consecutives(row, cols_journees, journee_actuelle), axis=1)
+        df_mercato['Alerte'] = df.apply(
+            lambda row: alerte_blessure(row, cols_journees, journee_actuelle), axis=1)
+        df_mercato['Ratio'] = df_mercato['Note'] / df_mercato['Cote']  # gardée pour affichage éventuel, plus utilisée dans les scores
+
+        # Note stabilisée (point 9) : la Note brute d'un joueur à 1-2 matchs joués
+        # cette saison n'est pas fiable (un seul bon match suffit à la faire
+        # décoller) — on la mélange avec sa Note de saison N-1 selon la même
+        # grille progressive (poids_phase) que predire_note_hybride(), mais
+        # appliquée à la moyenne de saison plutôt qu'à la prédiction pondérée
+        # récente de predire_note() : ça stabilise les petits échantillons sans
+        # jamais réintroduire de biais de forme récente (Mercato n'utilise
+        # volontairement pas de Forme 6J). Utilisée dans les formules de score/
+        # percentile ci-dessous, ET dans la colonne 'Note' affichée (remplacée par
+        # la valeur stabilisée juste après TituStabilisee, cf. plus bas) : la
+        # moyenne brute de saison n'a aucun sens tant que la saison n'a pas
+        # commencé (0 pour tout le monde), contrairement à Buts/Matchs joués qui
+        # restent de vraies informations factuelles même à 0.
+        #
+        # Le repli poste (médiane de Note, calculé sur les joueurs à échantillon
+        # fiable — >= 3 matchs cette saison) sert aussi de garde-fou côté N-1 :
+        # si l'historique N-1 d'un joueur repose lui-même sur peu de matchs, il
+        # est mélangé à ce repli plutôt que transféré tel quel (cf. docstring de
+        # stabiliser_valeur_saison).
+        df_fiable_note = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
+        note_mediane_poste = df_fiable_note.groupby('Poste')['Note'].median().to_dict()
+        note_repli_global = df_fiable_note['Note'].median()
+        if pd.isna(note_repli_global):
+            # Tout début de saison : personne n'a encore >= 3 matchs, le repli
+            # "saison en cours" est vide -- repli sur la médiane N-1 par poste
+            # (données réelles, disponibles indépendamment de l'avancement de la
+            # saison en cours), pour qu'un joueur sans historique N-1 propre (ex.
+            # transfert sans passage en Ligue 1 la saison passée, type Openda)
+            # retombe sur une estimation crédible pour son poste plutôt qu'un
+            # faux zéro brut.
+            note_mediane_poste, note_repli_global = mediane_n1_par_poste(df_n1, 'Note')
+
+        df_mercato['NoteStabilisee'] = df.apply(
+            lambda row: stabiliser_valeur_saison(
+                trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
+                row, cols_journees, journee_actuelle, 'Note',
+                note_mediane_poste.get(row['Poste'], note_repli_global)
+            ),
+            axis=1
+        )
+        df_mercato['NoteStabilisee'] = df_mercato['NoteStabilisee'].fillna(df_mercato['Note'])
+
+        # %Titu stabilisé (même principe que NoteStabilisee, même fonction générique) :
+        # contrairement à Note, %Titu brut n'a AUCUN autre repli N-1 dans tout le code —
+        # utilisé tel quel, il resterait bloqué à 0 pour 100% des joueurs tant qu'aucun
+        # match 26-27 n'est joué (0 est la valeur brute correcte, mais rend Stars/
+        # Valeurs sûres/Pépites structurellement vides puisque ces catégories exigent
+        # %Titu >= 50/60 : aucun joueur ne peut jamais les atteindre sans ce repli).
+        df_fiable_titu = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
+        titu_mediane_poste = df_fiable_titu.groupby('Poste')['%Titu'].median().to_dict()
+        titu_repli_global = df_fiable_titu['%Titu'].median()
+        if pd.isna(titu_repli_global):
+            # Même repli ultime que Note ci-dessus (médiane N-1 par poste).
+            titu_mediane_poste, titu_repli_global = mediane_n1_par_poste(df_n1, '%Titu')
+
+        df_mercato['TituStabilisee'] = df.apply(
+            lambda row: stabiliser_valeur_saison(
+                trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
+                row, cols_journees, journee_actuelle, '%Titu',
+                titu_mediane_poste.get(row['Poste'], titu_repli_global)
+            ),
+            axis=1
+        )
+        df_mercato['TituStabilisee'] = df_mercato['TituStabilisee'].fillna(df_mercato['%Titu'])
+
+        # Affichage : les colonnes visibles 'Note' et '%Titu' montrent désormais
+        # la version stabilisée (100% N-1 tant que la saison en cours n'a rien à
+        # offrir) plutôt que la valeur brute de saison en cours (0.00/0% pour
+        # tout le monde en pré-saison, sans aucun sens pour l'utilisateur) —
+        # cohérent avec le score/les seuils de catégorie, qui utilisent déjà ces
+        # mêmes colonnes stabilisées. 'Buts' et 'Matchs_joues' restent bruts : ce
+        # sont de vraies informations factuelles sur la saison en cours (0 y est
+        # honnête), pas des estimations à stabiliser.
+        df_mercato['Note'] = df_mercato['NoteStabilisee']
+        df_mercato['%Titu'] = df_mercato['TituStabilisee']
+
+        stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
+        df_mercato['MoyenneNote'] = stats_notes['MoyenneNote']
+        df_mercato['EcartTypeNote'] = stats_notes['EcartTypeNote']
+        # Régularité : fonction centralisée (modele.py::calculer_regularite_brute),
+        # avec repli sur le profil N-1 réel du joueur quand la saison en cours n'a
+        # encore aucune note exploitable — même logique que Conseiller Hebdo et
+        # Simuler le match (get_joueur_info), pour qu'un joueur fiable en N-1 ne
+        # reste pas bloqué à 0.0 (et donc que Fiabilite ci-dessous ne se réduise
+        # pas silencieusement à son seul terme %Titu tant que la saison n'a pas
+        # commencé).
+        df_mercato['Regularite'] = df.apply(
+            lambda row: calculer_regularite_brute(
+                row, cols_journees,
+                trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1
+            ),
+            axis=1
+        )
+
+        # Moyenne/écart-type stabilisés (même principe que NoteStabilisee) : un
+        # joueur à 1-2 matchs joués a une moyenne non représentative (un seul bon
+        # ou mauvais match) et un écart-type quasi nul (variance nulle sur un seul
+        # échantillon), ce qui resserre artificiellement sa distribution simulée
+        # et gonfle son ProbaBut à des valeurs irréalistes (souvent 100%/0%). Les
+        # replis (moyenne/écart-type médians du poste) sont calculés par la même
+        # fonction centralisée que Simuler le match (modele.py::
+        # calculer_repli_stabilisation, sur les seuls joueurs à échantillon
+        # fiable >= 3 matchs et lignes valides — Cote/Note/Variation/%Titu non
+        # NaN et Cote > 0), pour ne jamais risquer que les deux pages retombent
+        # sur des repli différents.
+        (moyenne_mediane_poste, moyenne_repli_global,
+         ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)
+        # Tout début de saison : personne n'a encore >= 3 matchs, la population
+        # fiable est vide et ces médianes valent NaN — repli neutre (note 5/10,
+        # écart-type modéré) plutôt qu'un NaN qui ferait planter simuler_proba_but()
+        # (ecart_type <= 0 sur None lève une TypeError) pour tout joueur sans note
+        # actuelle NI historique N-1 (ex. transfert sans historique Ligue 1 : Openda).
+        if pd.isna(moyenne_repli_global):
+            moyenne_repli_global = 5.0
+        if pd.isna(ecart_type_repli_global):
+            ecart_type_repli_global = 1.0
+
+        stats_stabilisees = df.apply(
+            lambda row: stabiliser_stats_proba_but(
+                trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
+                row, cols_journees, journee_actuelle,
+                moyenne_mediane_poste.get(row['Poste'], moyenne_repli_global),
+                ecart_type_mediane_poste.get(row['Poste'], ecart_type_repli_global)
+            ),
+            axis=1, result_type='expand'
+        )
+        df_mercato['MoyenneStabilisee'] = stats_stabilisees[0]
+        df_mercato['EcartTypeStabilise'] = stats_stabilisees[1]
+
+        # --- Tension du marché (à partir du % achat T1) ---
+        df_mercato['Tension'] = df_mercato['AchatT1'].apply(_tension)
+
+        # --- Rangs percentile Cote/Note par poste (réutilisés par "À éviter" et par les
+        # seuils de catégorie plus bas) ---
+        df_mercato['Cote_pct'] = df_mercato.groupby('Poste')['Cote'].rank(pct=True)
+        df_mercato['Note_pct'] = df_mercato.groupby('Poste')['NoteStabilisee'].rank(pct=True)
+
+        # À éviter — 3 critères indépendants (logique OU) : un seul suffit à qualifier
+        # le joueur, peu importe les autres. Calculé en mask pour pouvoir exclure ces
+        # joueurs des 4 autres stratégies plus bas (mutuellement exclusif, cf. mask_stars
+        # etc.) — un joueur "à éviter" n'apparaît jamais ailleurs, quel que soit le
+        # critère qui l'y a placé.
+        # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
+        #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
+        mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
+        # 2. Joue très peu (matchs_joues / journee_actuelle < 20%), à partir
+        #    de la journée 8 — même seuil calendaire que celui déjà utilisé par le
+        #    modèle hybride (poids_phase, plafond_calendaire=True). Avant J8, repli
+        #    sur une présomption basée sur l'historique N-1 (cf. _rarement_apparition) :
+        #    aucun repli fabriqué en l'absence d'historique N-1 fiable.
+        rarement = df_mercato.apply(
+            lambda row: _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1),
+            axis=1, result_type='expand'
+        )
+        df_mercato['_rarement_flag'] = rarement[0]
+        df_mercato['_rarement_motif'] = rarement[1]
+        mask_rarement = df_mercato['_rarement_flag']
+        # 3. Particulièrement mauvais pour son poste (Note_pct <= 15%), peu importe le
+        #    prix — un joueur pas cher mais très en dessous de son poste reste un
+        #    mauvais choix, pas juste une "pépite" à cause de son prix bas.
+        mask_note_tres_faible = df_mercato['Note_pct'] <= 0.15
+        # 4. Blessure longue : Indispo=True ET SEUIL_BLESSURE_LONGUE+ matchs consécutifs
+        #    sans jouer (constante partagée avec le badge 🚑 d'alerte_blessure, modele.py)
+        #    — indépendant du prix/de la note, un joueur durablement indisponible est à
+        #    éviter au mercato peu importe ses statistiques passées (colonnes déjà
+        #    calculées plus haut : 'Indispo ?' vient directement de df, 'Absences_recentes'
+        #    réutilise absences_consecutives()).
+        mask_indispo_longue = (
+            df_mercato['Indispo ?'].fillna(False).astype(bool)
+            & (df_mercato['Absences_recentes'] >= SEUIL_BLESSURE_LONGUE)
+        )
+        mask_eviter = mask_cher_decevant | mask_rarement | mask_note_tres_faible | mask_indispo_longue
+        # Masques exposés en colonnes pour que _raison_eviter() (plus bas) les LISE
+        # au lieu de retaper les mêmes seuils en toutes lettres — un seul endroit à
+        # faire évoluer si un seuil "À éviter" change un jour.
+        df_mercato['_cher_decevant'] = mask_cher_decevant
+        df_mercato['_note_tres_faible'] = mask_note_tres_faible
+        df_mercato['_indispo_longue'] = mask_indispo_longue
+        df_eviter = df_mercato[mask_eviter].copy()
+
+        # --- ProbaBut / ProbaArret (point 1) : Monte Carlo face aux moyennes de ligne de la ligue ---
+        df_mercato['Ligne'] = df_mercato['Poste'].apply(poste_vers_ligne)
+        moyennes_lignes = df_mercato.groupby('Ligne')['MoyenneNote'].mean().to_dict()
+        for ligne in ['ATT', 'MIL', 'DEF', 'GB']:
+            moyennes_lignes.setdefault(ligne, 5.0)
+
+        df_mercato['ProbaBut'] = df_mercato.apply(
+            lambda row: simuler_proba_but(
+                row['MoyenneStabilisee'], row['EcartTypeStabilise'], row['Poste'], moyennes_lignes
+            ),
+            axis=1
+        )
+
+        # --- Variation_residu (point 4) : résidu de Variation ~ Note + Cote ---
+        X = np.column_stack([
+            np.ones(len(df_mercato)),
+            df_mercato['NoteStabilisee'].to_numpy(dtype=float),
+            df_mercato['Cote'].to_numpy(dtype=float),
+        ])
+        y = df_mercato['Variation'].to_numpy(dtype=float)
+        coeffs, *_ = np.linalg.lstsq(X, y, rcond=None)
+        df_mercato['Variation_residu'] = y - X @ coeffs
+
+        # --- Normalisation en rang percentile, séparément par poste (point 5) ---
+        for col in ['ProbaBut', 'Variation_residu', 'AchatT1']:
+            df_mercato[f'{col}_norm'] = df_mercato.groupby('Poste')[col].rank(pct=True)
+
+        for strategie in ['stars', 'valeurs_sures', 'equilibre', 'pepites']:
+            df_mercato[f'Score_{strategie}'] = df_mercato.apply(
+                lambda row: calculer_score_mercato(row, strategie), axis=1
+            )
+
+        # --- Seuils de catégorie par poste, en RANG PERCENTILE (point 8) — 4 critères
+        # RÉELLEMENT distincts (pas 3 bandes d'un même score, cf. correction ci-dessous) :
+        # Stars = chers ET excellents ; Valeurs sûres = prix moyen-élevé ET fiables
+        # (%Titu/régularité) ; Pépites = pas chers ET corrects ; Équilibre = catégorie
+        # résiduelle (tout le reste), pour garantir que Stars+Valeurs+Équilibre+Pépites
+        # couvrent 100% de chaque poste, sans trou. (Note_pct/Cote_pct déjà calculés
+        # plus haut, réutilisés ici tels quels.)
+
+        # Fiabilité (Valeurs sûres) : mélange %Titu (dispo) + régularité (constance des
+        # notes), percentilée par poste — distincte de "Note" (qui mesure l'excellence,
+        # pas la fiabilité).
+        df_mercato['Fiabilite'] = 0.6 * (df_mercato['TituStabilisee'] / 100) + 0.4 * df_mercato['Regularite']
+        df_mercato['Fiabilite_pct'] = df_mercato.groupby('Poste')['Fiabilite'].rank(pct=True)
+
+        # Score pépite : prix bas (rang inversé) + note correcte, re-percentilé par poste
+        # pour garantir un palier "top X%" exact (la combinaison brute n'est pas uniforme).
+        #
+        # Calculé UNIQUEMENT parmi les joueurs qui passent déjà le filtre de titularisation
+        # de Pépites (%Titu >= 50) au sein du même poste — pas sur le poste entier. Sinon,
+        # les joueurs jamais utilisés (prix plancher mécanique, souvent 3e/4e choix) polluent
+        # le haut du classement "pas cher" avec une cherté nulle qu'ils n'ont jamais eu à
+        # justifier par du temps de jeu, écrasant le rang des joueurs qui jouent réellement.
+        # Diagnostic Gardiens : 32% de gardiens jamais utilisés cette saison, tous au prix
+        # plancher du poste, contre seulement 5-10% sur les autres postes — assez pour que
+        # le meilleur gardien réellement titulaire ne dépasse jamais le seuil de 0.85 alors
+        # qu'il le devrait. Restreindre le pourcentile à la sous-population qui joue déjà
+        # élimine cette pollution sur tous les postes, uniformément (effet mineur ailleurs,
+        # où la proportion de joueurs jamais utilisés est bien plus faible).
+        mask_titu_pepites = df_mercato['TituStabilisee'] >= 50
+        df_actifs = df_mercato.loc[mask_titu_pepites]
+        cote_pct_actifs = df_actifs.groupby('Poste')['Cote'].rank(pct=True)
+        note_pct_actifs = df_actifs.groupby('Poste')['NoteStabilisee'].rank(pct=True)
+        score_pepite_actifs = 0.6 * (1 - cote_pct_actifs) + 0.4 * note_pct_actifs
+        df_mercato['Score_pepite_pct'] = np.nan
+        df_mercato.loc[mask_titu_pepites, 'Score_pepite_pct'] = (
+            score_pepite_actifs.groupby(df_actifs['Poste']).rank(pct=True)
+        )
+
+        mask_stars = (
+            (df_mercato['Cote_pct'] >= 0.95) &
+            (df_mercato['Note_pct'] >= 0.85) &
+            (df_mercato['TituStabilisee'] >= 60) &
+            (df_mercato['Tension'] != "Très peu demandé") &
+            ~mask_eviter
+        )
+        # Pépites calculé avant Valeurs sûres : en cas de chevauchement (joueur cher-moyen
+        # ET fiable ET par ailleurs "pas cher + correct" pour son poste), Pépites prime —
+        # son critère de prix est le plus objectif et le plus attendu par un utilisateur
+        # qui cherche justement un bon coup pas cher.
+        mask_pepites = (
+            (df_mercato['Score_pepite_pct'] >= 0.85) &
+            (df_mercato['TituStabilisee'] >= 50) &
+            ~mask_eviter
+        )
+        mask_valeurs = (
+            (df_mercato['Cote_pct'] >= 0.50) & (df_mercato['Cote_pct'] < 0.85) &
+            (df_mercato['Fiabilite_pct'] >= 0.60) &
+            (df_mercato['TituStabilisee'] >= 60) &
+            ~mask_eviter &
+            ~mask_pepites
+        )
+        # Équilibre = tout le reste (catégorie résiduelle, aucun critère propre) : garantit
+        # structurellement qu'aucun joueur n'est absent des 4 stratégies combinées. "À
+        # éviter" en est explicitement exclu aussi (catégories mutuellement exclusives :
+        # un joueur "à éviter" n'apparaît nulle part ailleurs).
+        mask_equilibre = ~mask_stars & ~mask_valeurs & ~mask_pepites & ~mask_eviter
+
+        # Étiquette de catégorie par joueur (les 5 masques sont mutuellement exclusifs,
+        # cf. plus haut) — utilisée par la recherche globale ci-dessous pour indiquer
+        # dans quelle stratégie chaque résultat apparaît, sans dépendre de l'onglet
+        # actuellement sélectionné.
+        df_mercato['Categorie'] = np.select(
+            [mask_stars, mask_valeurs, mask_pepites, mask_eviter, mask_equilibre],
+            ['Stars', 'Valeurs sûres', 'Pépites', 'À éviter', 'Équilibre'],
+            default='?'
+        )
+
+        df_stars = df_mercato[mask_stars].copy()
+        df_valeurs = df_mercato[mask_valeurs].copy()
+        df_pepites = df_mercato[mask_pepites].copy()
+        df_equilibre = df_mercato[mask_equilibre].copy()
+
+        # ============================================================
+        # BANDEAU TITRE + CHIFFRES CLÉS — habillage visuel, placé ici (après
+        # tout le pipeline de scoring, avant la stratégie/le tableau) : le
+        # repère contextuel a besoin de taille_choisie (résolue plus haut) et
+        # les 4 cartouches lisent df_mercato/df_pepites déjà entièrement
+        # calculés, sans dupliquer aucun calcul de score.
+        # ============================================================
+        repere_journee = "Pré-saison" if journee_actuelle == 0 else f"Journée {journee_actuelle}"
+        st.markdown(
+            f"""
+            <div class="gs-page-header">
+              <div class="gs-page-header-logo">MT</div>
+              <div class="gs-page-header-text">
+                <div class="gs-page-header-title">Conseiller Mercato</div>
+              </div>
+              <div class="gs-page-header-context">{escape(repere_journee)} · {escape(taille_choisie)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # --- Pépite du moment : meilleur Score_pepites de la catégorie Pépites
+        # (même colonne de tri que celle utilisée par l'onglet "Pépites" lui-même,
+        # cf. plus bas : top = df_poste.sort_values(f'Score_{strategie_key}', ...)). ---
+        if len(df_pepites) > 0:
+            top_pepite = df_pepites.loc[df_pepites['Score_pepites'].idxmax()]
+            pepite_valeur = top_pepite['Joueur']
+            pepite_sub = f"{top_pepite['Poste']} · {top_pepite['Club']} · Cote {top_pepite['Cote']:.0f}"
+        else:
+            pepite_valeur = "—"
+            pepite_sub = "Aucun joueur éligible"
+
+        # --- Le plus demandé : AchatT1 (demande réelle, ou repli N-1 si les
+        # vraies enchères ne sont pas encore disponibles) le plus élevé, pour
+        # la taille de ligue actuellement sélectionnée. ---
+        df_demande = df_mercato.dropna(subset=['AchatT1'])
+        if len(df_demande) > 0:
+            top_demande = df_demande.loc[df_demande['AchatT1'].idxmax()]
+            demande_valeur = top_demande['Joueur']
+            demande_sub = f"{top_demande['AchatT1']:.0f}% d'achat T1"
+        else:
+            demande_valeur = "—"
+            demande_sub = "Aucune donnée de demande"
+
+        # --- Écart Cote/Enchère : parmi les joueurs à Cote >= 10 (seuil pour
+        # exclure les joueurs peu pertinents), le plus grand écart relatif
+        # (Enchère - Cote)/Cote — un joueur que le marché valorise nettement
+        # au-dessus de sa cote officielle. ---
+        df_ecart = df_mercato[(df_mercato['Cote'] >= 10) & df_mercato['Enchere'].notna()].copy()
+        if len(df_ecart) > 0:
+            df_ecart['_ecart_pct'] = (df_ecart['Enchere'] - df_ecart['Cote']) / df_ecart['Cote'] * 100
+            top_ecart = df_ecart.loc[df_ecart['_ecart_pct'].idxmax()]
+            ecart_valeur = f"{top_ecart['_ecart_pct']:+.0f}%"
+            ecart_sub = f"{top_ecart['Joueur']} ({top_ecart['Cote']:.0f} → {top_ecart['Enchere']:.1f})"
+        else:
+            ecart_valeur = "—"
+            ecart_sub = "Aucun joueur éligible (Cote ≥ 10)"
+
+        # --- Dernière donnée : horodatage de récupération, mémorisé avec le
+        # cache (app.py::charger_depuis_github) — reflète la dernière vraie
+        # récupération réseau, pas l'heure du rerun courant. ---
+        maj_valeur = derniere_maj.strftime('%d/%m %H:%M') if derniere_maj else "—"
+
+        st.markdown(
+            f"""
+            <div class="gs-kpi-row">
+              <div class="gs-kpi-card">
+                <div class="gs-kpi-label">Dernière donnée</div>
+                <div class="gs-kpi-value">{escape(maj_valeur)}</div>
+              </div>
+              <div class="gs-kpi-card">
+                <div class="gs-kpi-label">Pépite du moment</div>
+                <div class="gs-kpi-value">{escape(pepite_valeur)}</div>
+                <div class="gs-kpi-sub">{escape(pepite_sub)}</div>
+              </div>
+              <div class="gs-kpi-card">
+                <div class="gs-kpi-label">Le plus demandé</div>
+                <div class="gs-kpi-value">{escape(demande_valeur)}</div>
+                <div class="gs-kpi-sub">{escape(demande_sub)}</div>
+              </div>
+              <div class="gs-kpi-card">
+                <div class="gs-kpi-label">Écart Cote/Enchère</div>
+                <div class="gs-kpi-value">{escape(ecart_valeur)}</div>
+                <div class="gs-kpi-sub">{escape(ecart_sub)}</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        separateur("STRATÉGIE MERCATO")
+        # Sélection stratégie
+        strategie_choisie = st.radio(
+            "Stratégie mercato :",
+            ["Stars", "Valeurs sûres", "Équilibre", "Pépites", "À éviter"],
+            horizontal=True,
+            key="mercato_strategie",
+            label_visibility="collapsed"
+        )
+
+        recherche_joueur = st.text_input(
+            "🔎 Rechercher un joueur",
+            key="mercato_recherche_joueur",
+            placeholder="Nom du joueur…",
+            help="Recherche sur tous les postes et toutes les catégories (Stars/Valeurs sûres/"
+                 "Équilibre/Pépites/À éviter) à la fois — inutile de changer d'onglet au préalable."
+        ).strip()
+
+        with st.expander("🏥 Légende blessures"):
+            st.markdown("""
+    |  | Statut |
+    |---|---|
+    | 🚑 | Blessé — 8+ matchs manqués |
+    | 🩹 | Blessé — moins de 8 matchs manqués |
+    | 🏥 | Retour de blessure — 8+ matchs d'absence |
+    | 🐢 | Retour de blessure — 4 à 7 matchs d'absence |
+    | 🆕 | Pas encore titularisé cette saison (n'a jamais joué — distinct d'un retour de blessure) |
+    """)
+
+        cols_affichage = ['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
+                           'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte']
+
+        strategie_map = {
+            "Stars": ('stars', df_stars),
+            "Valeurs sûres": ('valeurs_sures', df_valeurs),
+            "Équilibre": ('equilibre', df_equilibre),
+            "Pépites": ('pepites', df_pepites),
+        }
+
+        if recherche_joueur:
+            # Recherche globale (tous postes et toutes catégories confondus) : ne
+            # dépend ni de la stratégie ni de l'onglet poste sélectionné, pour que
+            # l'utilisateur n'ait pas à cliquer onglet par onglet pour retrouver un
+            # joueur précis. La colonne Catégorie indique où il apparaît réellement
+            # (un même nom peut correspondre à plusieurs joueurs différents, dans
+            # des catégories/postes distincts — chacun listé sur sa propre ligne).
+            # Comparaison normalisée (accents + casse + séparateurs) : sans quoi un nom
+            # tapé sans accent (ex. "Said" au lieu de "Saïd") ne trouverait rien, alors
+            # que str.contains(case=False) ne gère que la casse, pas les accents — et un
+            # nom composé tapé avec le mauvais séparateur (ex. "Saint Maximin" ou
+            # "SaintMaximin" au lieu de "Saint-Maximin") ne trouverait rien non plus.
+            noms_normalises = df_mercato['Joueur'].apply(normaliser_recherche)
+            recherche_normalisee = normaliser_recherche(recherche_joueur)
+            resultats = df_mercato[
+                noms_normalises.str.contains(recherche_normalisee, na=False, regex=False)
+            ].copy()
+            if len(resultats) == 0:
+                st.info("Aucun joueur trouvé.")
+            else:
+                resultats['ProbaBut'] = resultats['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
+                st.markdown(
+                    _table_html(
+                        resultats[['Joueur', 'Club', 'Poste', 'Categorie', 'Cote', 'Enchere', 'Tension',
+                                   'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte', 'ProbaBut']
+                                   ].sort_values('Cote', ascending=False
+                                   ).rename(columns={
+                                       'Enchere': label_enchere, 'Tension': label_demande,
+                                       'Matchs_joues': 'Matchs joués', 'ProbaBut': 'Proba but/arrêt',
+                                       '%Titu': '% Titu (estimé)',
+                                   }).reset_index(drop=True)
+                    ),
+                    unsafe_allow_html=True
+                )
+        elif strategie_choisie == "À éviter":
+            st.markdown(
+                '<div style="font-family:\'Oswald\',sans-serif; font-weight:700; '
+                'font-size:1.05rem; letter-spacing:0.04em; text-transform:uppercase; '
+                'color:#c8a84b; margin:0.4rem 0 0.8rem;">Joueurs à éviter</div>',
+                unsafe_allow_html=True
+            )
+            df_eviter_affiche = df_eviter.copy()
+
+            def _raison_eviter(row):
+                # Les 4 critères sont indépendants (OU) : un joueur peut en cumuler
+                # plusieurs (ex. cher+décevant ET apparaît rarement) — toutes les
+                # raisons qui s'appliquent sont listées, pas seulement la première.
+                # Lit les masques déjà calculés (mask_cher_decevant, etc., exposés en
+                # colonnes '_cher_decevant'/'_note_tres_faible'/'_indispo_longue' plus
+                # haut) plutôt que de retaper les mêmes seuils ici — un seul endroit
+                # à faire évoluer si un seuil "À éviter" change. Accessoirement,
+                # corrige un oubli : "Blessure longue" (mask_indispo_longue) n'était
+                # jusqu'ici jamais listée comme raison, même quand c'était le SEUL
+                # critère qui qualifiait le joueur (Raison affichée vide dans ce cas).
+                raisons = []
+                if row['_cher_decevant']:
+                    raisons.append(
+                        "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
+                        else "Cher + note décevante"
+                    )
+                if row['_rarement_flag']:
+                    raisons.append(row['_rarement_motif'])
+                if row['_note_tres_faible']:
+                    raisons.append("Note très faible pour son poste")
+                if row['_indispo_longue']:
+                    raisons.append("Blessure longue")
+                return " · ".join(raisons)
+
+            df_eviter_affiche['Raison'] = df_eviter_affiche.apply(_raison_eviter, axis=1)
             st.markdown(
                 _table_html(
-                    resultats[['Joueur', 'Club', 'Poste', 'Categorie', 'Cote', 'Enchere', 'Tension',
-                               'Note', 'Buts', '%Titu', 'Matchs_joues', 'Alerte', 'ProbaBut']
-                               ].sort_values('Cote', ascending=False
-                               ).rename(columns={
-                                   'Enchere': label_enchere, 'Tension': label_demande,
-                                   'Matchs_joues': 'Matchs joués', 'ProbaBut': 'Proba but/arrêt',
+                    df_eviter_affiche[['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
+                               'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
+                               ].rename(columns={
+                                   'Enchere': label_enchere, 'Tension': label_demande, 'Matchs_joues': 'Matchs joués',
                                    '%Titu': '% Titu (estimé)',
                                }).reset_index(drop=True)
                 ),
                 unsafe_allow_html=True
             )
-    elif strategie_choisie == "À éviter":
-        st.markdown(
-            '<div style="font-family:\'Oswald\',sans-serif; font-weight:700; '
-            'font-size:1.05rem; letter-spacing:0.04em; text-transform:uppercase; '
-            'color:#c8a84b; margin:0.4rem 0 0.8rem;">Joueurs à éviter</div>',
-            unsafe_allow_html=True
-        )
-        df_eviter_affiche = df_eviter.copy()
+        else:
+            strategie_key, df_s = strategie_map[strategie_choisie]
+            postes = {
+                'A': 'Attaquants', 'MO': 'Milieux Off.',
+                'MD': 'Milieux Déf.', 'DC': 'Défenseurs C.',
+                'DL': 'Défenseurs L.', 'G': 'Gardiens'
+            }
+            tabs = st.tabs(list(postes.values()), key="mercato_postes")
+            for tab, (code, nom) in zip(tabs, postes.items()):
+                with tab:
+                    df_poste = df_s[df_s['Poste'] == code]
 
-        def _raison_eviter(row):
-            # Les 4 critères sont indépendants (OU) : un joueur peut en cumuler
-            # plusieurs (ex. cher+décevant ET apparaît rarement) — toutes les
-            # raisons qui s'appliquent sont listées, pas seulement la première.
-            # Lit les masques déjà calculés (mask_cher_decevant, etc., exposés en
-            # colonnes '_cher_decevant'/'_note_tres_faible'/'_indispo_longue' plus
-            # haut) plutôt que de retaper les mêmes seuils ici — un seul endroit
-            # à faire évoluer si un seuil "À éviter" change. Accessoirement,
-            # corrige un oubli : "Blessure longue" (mask_indispo_longue) n'était
-            # jusqu'ici jamais listée comme raison, même quand c'était le SEUL
-            # critère qui qualifiait le joueur (Raison affichée vide dans ce cas).
-            raisons = []
-            if row['_cher_decevant']:
-                raisons.append(
-                    "Cher + peu de matchs" if row['Matchs_joues'] < seuil_matchs
-                    else "Cher + note décevante"
-                )
-            if row['_rarement_flag']:
-                raisons.append(row['_rarement_motif'])
-            if row['_note_tres_faible']:
-                raisons.append("Note très faible pour son poste")
-            if row['_indispo_longue']:
-                raisons.append("Blessure longue")
-            return " · ".join(raisons)
+                    # Plus de plafond d'affichage (point 2) : la catégorie entière est
+                    # montrée, triée par score.
+                    top = df_poste.sort_values(
+                        f'Score_{strategie_key}', ascending=False
+                    ).copy()
+                    nom_colonne_proba = 'Proba arrêt' if code == 'G' else 'Proba but'
+                    top['ProbaBut'] = top['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
 
-        df_eviter_affiche['Raison'] = df_eviter_affiche.apply(_raison_eviter, axis=1)
-        st.markdown(
-            _table_html(
-                df_eviter_affiche[['Joueur', 'Club', 'Poste', 'Cote', 'Enchere', 'Tension',
-                           'Note', 'Matchs_joues', '%Titu', 'Alerte', 'Raison']
-                           ].rename(columns={
-                               'Enchere': label_enchere, 'Tension': label_demande, 'Matchs_joues': 'Matchs joués',
-                               '%Titu': '% Titu (estimé)',
-                           }).reset_index(drop=True)
-            ),
-            unsafe_allow_html=True
-        )
-    else:
-        strategie_key, df_s = strategie_map[strategie_choisie]
-        postes = {
-            'A': 'Attaquants', 'MO': 'Milieux Off.',
-            'MD': 'Milieux Déf.', 'DC': 'Défenseurs C.',
-            'DL': 'Défenseurs L.', 'G': 'Gardiens'
-        }
-        tabs = st.tabs(list(postes.values()), key="mercato_postes")
-        for tab, (code, nom) in zip(tabs, postes.items()):
-            with tab:
-                df_poste = df_s[df_s['Poste'] == code]
-
-                # Plus de plafond d'affichage (point 2) : la catégorie entière est
-                # montrée, triée par score.
-                top = df_poste.sort_values(
-                    f'Score_{strategie_key}', ascending=False
-                ).copy()
-                nom_colonne_proba = 'Proba arrêt' if code == 'G' else 'Proba but'
-                top['ProbaBut'] = top['ProbaBut'].apply(lambda x: f"{x*100:.0f}%")
-
-                if len(top) > 0:
-                    st.markdown(
-                        _table_html(
-                            top[cols_affichage + ['ProbaBut']
-                                ].rename(columns={
-                                    'Enchere': label_enchere, 'Tension': label_demande,
-                                    'Matchs_joues': 'Matchs joués', 'ProbaBut': nom_colonne_proba,
-                                    '%Titu': '% Titu (estimé)',
-                                }).reset_index(drop=True)
-                        ),
-                        unsafe_allow_html=True
-                    )
-                    if code == 'G':
-                        for idx_gardien in top.index:
-                            row_actuelle = df.loc[idx_gardien]
-                            row_n1 = trouver_historique_n1(row_actuelle['Joueur'], row_actuelle['Poste'], df_n1)
-                            _, mode_gardien = predire_note_hybride(
-                                row_n1, cols_journees_n1, row_actuelle, cols_journees, journee_actuelle
-                            )
-                            if mode_gardien not in (None, "100%_actuelle", "aucune_prediction_possible"):
-                                st.warning(
-                                    f"**{row_actuelle['Joueur']}** — ⚠️ Note basée en grande partie sur la "
-                                    "saison précédente — vérifiez que ce gardien reste bien titulaire cette "
-                                    "saison avant de miser dessus."
+                    if len(top) > 0:
+                        st.markdown(
+                            _table_html(
+                                top[cols_affichage + ['ProbaBut']
+                                    ].rename(columns={
+                                        'Enchere': label_enchere, 'Tension': label_demande,
+                                        'Matchs_joues': 'Matchs joués', 'ProbaBut': nom_colonne_proba,
+                                        '%Titu': '% Titu (estimé)',
+                                    }).reset_index(drop=True)
+                            ),
+                            unsafe_allow_html=True
+                        )
+                        if code == 'G':
+                            for idx_gardien in top.index:
+                                row_actuelle = df.loc[idx_gardien]
+                                row_n1 = trouver_historique_n1(row_actuelle['Joueur'], row_actuelle['Poste'], df_n1)
+                                _, mode_gardien = predire_note_hybride(
+                                    row_n1, cols_journees_n1, row_actuelle, cols_journees, journee_actuelle
                                 )
-                else:
-                    st.info("Aucun joueur disponible")
+                                if mode_gardien not in (None, "100%_actuelle", "aucune_prediction_possible"):
+                                    st.warning(
+                                        f"**{row_actuelle['Joueur']}** — ⚠️ Note basée en grande partie sur la "
+                                        "saison précédente — vérifiez que ce gardien reste bien titulaire cette "
+                                        "saison avant de miser dessus."
+                                    )
+                    else:
+                        st.info("Aucun joueur disponible")
