@@ -44,6 +44,24 @@ def _renommer_colonnes_journee(df):
     return df.rename(columns=renommage)
 
 
+def _renommer_colonnes_encheres(df):
+    """Renomme les colonnes d'enchères/achat portant un suffixe de type
+    ' W-N' (ex. 'Enchere moy W-3', '% achat T1/L6 W-3' — un marqueur de
+    snapshot hebdomadaire ajouté par MPGStats sur cet export, dont le numéro
+    peut changer d'un export à l'autre) vers leur nom sans suffixe (ex.
+    'Enchere moy', '% achat T1/L6') — TAILLES_LIGUE (utils/mercato.py)
+    n'accepte que ces noms exacts, sans quoi enchere_disponible resterait
+    False et Mercato retomberait sur le repli N-1 alors que de vraies
+    données d'enchères existent. Motif volontairement restreint aux
+    colonnes 'Enchere ...'/'% achat ...' : ne touche aucune autre colonne."""
+    renommage = {}
+    for col in df.columns:
+        m = re.match(r'^(Enchere .+|% achat .+) W-\d+$', str(col))
+        if m:
+            renommage[col] = m.group(1)
+    return df.rename(columns=renommage), len(renommage)
+
+
 def _detecter_cols_journees(df):
     return [c for c in df.columns if re.match(r'^D\d{1,2}$', str(c))]
 
@@ -134,6 +152,7 @@ def charger_fichier_unique(fichier_entree):
     lancée)."""
     df = pd.read_excel(fichier_entree)
     df = _renommer_colonnes_journee(df)
+    df, nb_colonnes_encheres_renommees = _renommer_colonnes_encheres(df)
     df = _corriger_noms(df)
     _verifier_cle_unique(df, fichier_entree)
 
@@ -158,6 +177,7 @@ def charger_fichier_unique(fichier_entree):
         df_n1[c] = df_n1[c].apply(nettoyer_note)
 
     df, rapport = _nettoyer_contamination_n1(df, df_n1, cols_journees)
+    rapport['nb_colonnes_encheres_renommees'] = nb_colonnes_encheres_renommees
     return df, rapport
 
 
@@ -171,6 +191,13 @@ def main():
         sys.exit(1)
 
     df, rapport = charger_fichier_unique(fichier_entree)
+
+    if rapport['nb_colonnes_encheres_renommees'] > 0:
+        print(f"✅ {rapport['nb_colonnes_encheres_renommees']} colonne(s) d'enchères/achat "
+              f"renommée(s) (suffixe hebdomadaire retiré).")
+    else:
+        print("ℹ️  Aucune colonne d'enchères à renommer (fichier sans données d'enchères, "
+              "ou déjà aux noms attendus).")
 
     print(f"Journées vérifiables (historique N-1 résolu, >= {MATCHS_MIN_ECHANTILLON} "
           f"journées non nulles) : {rapport['joueurs_verifiables_d']} joueurs")

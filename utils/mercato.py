@@ -64,9 +64,16 @@ PROPORTIONS_RESTANT = {
 
 
 def _colonnes_taille(df, taille_label):
+    # Priorité à la colonne spécifique à la taille choisie (ex. '% achat
+    # T1/L6' pour "6 joueurs"), repli sur la colonne "Toutes tailles"
+    # seulement si la colonne spécifique n'existe pas du tout dans le
+    # fichier — jamais l'inverse, sans quoi sélectionner "6/8/10 joueurs"
+    # afficherait quand même la tension/demande toutes tailles confondues
+    # dès que '% achat T1' existe (col_enchere applique déjà cette priorité
+    # dans le bon sens ; col_achat était inversée).
     cfg = TAILLES_LIGUE[taille_label]
     col_enchere = cfg["enchere"] if cfg["enchere"] in df.columns else "Enchere moy"
-    col_achat = "% achat T1" if "% achat T1" in df.columns else cfg["achat_t1"]
+    col_achat = cfg["achat_t1"] if cfg["achat_t1"] in df.columns else "% achat T1"
     return col_enchere, col_achat
 
 
