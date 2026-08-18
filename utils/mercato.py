@@ -691,14 +691,18 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
 
         # --- Pépite du moment : meilleur Score_pepites de la catégorie Pépites
         # (même colonne de tri que celle utilisée par l'onglet "Pépites" lui-même,
-        # cf. plus bas : top = df_poste.sort_values(f'Score_{strategie_key}', ...)). ---
-        if len(df_pepites) > 0:
-            top_pepite = df_pepites.loc[df_pepites['Score_pepites'].idxmax()]
+        # cf. plus bas : top = df_poste.sort_values(f'Score_{strategie_key}', ...)),
+        # parmi les joueurs à Cote >= 10 (même seuil que "Écart Cote/Enchère", pour
+        # exclure les joueurs peu pertinents — sans lui, un joueur à Cote=1 pouvait
+        # être mis en avant comme "pépite"). ---
+        df_pepites_pertinentes = df_pepites[df_pepites['Cote'] >= 10]
+        if len(df_pepites_pertinentes) > 0:
+            top_pepite = df_pepites_pertinentes.loc[df_pepites_pertinentes['Score_pepites'].idxmax()]
             pepite_valeur = top_pepite['Joueur']
             pepite_sub = f"{top_pepite['Poste']} · {top_pepite['Club']} · Cote {top_pepite['Cote']:.0f}"
         else:
             pepite_valeur = "—"
-            pepite_sub = "Aucun joueur éligible"
+            pepite_sub = "Aucun joueur éligible (Cote ≥ 10)"
 
         # --- Le plus demandé : AchatT1 (demande réelle, ou repli N-1 si les
         # vraies enchères ne sont pas encore disponibles) le plus élevé, pour
