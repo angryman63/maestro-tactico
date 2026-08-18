@@ -263,7 +263,6 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
           <div class="gs-page-header-logo">MT</div>
           <div class="gs-page-header-text">
             <div class="gs-page-header-title">Simuler le match</div>
-            <div class="gs-page-header-tagline">Préparez chaque duel comme un pro.</div>
           </div>
         </div>
         """,
@@ -282,7 +281,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
           </div>
           <div class="gs-step-card">
             <div class="gs-step-num">3</div>
-            <div class="gs-step-text">Recevoir la reco de bonus</div>
+            <div class="gs-step-text">Configurer les bonus</div>
           </div>
         </div>
         """,

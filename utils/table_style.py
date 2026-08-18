@@ -635,7 +635,7 @@ ul[data-testid="stSelectboxVirtualDropdownEmpty"] li::before {
 /* ── Cartouches chiffres clés (Mercato) ── */
 .gs-kpi-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 14px;
     margin-bottom: 26px;
 }

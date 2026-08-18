@@ -258,7 +258,7 @@ def _rarement_apparition(row, journee_actuelle, df_n1, cols_journees_n1):
     return True, "Jouait très peu la saison passée (présomption N-1)"
 
 
-def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, derniere_maj=None):
+def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle):
     with st.container(key="mercato_page_wrap"):
         inject_style()
         separateur("TAILLE DE LA LIGUE")
@@ -692,18 +692,9 @@ def afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuell
             ecart_valeur = "—"
             ecart_sub = "Aucun joueur éligible (Cote ≥ 10)"
 
-        # --- Dernière donnée : horodatage de récupération, mémorisé avec le
-        # cache (app.py::charger_depuis_github) — reflète la dernière vraie
-        # récupération réseau, pas l'heure du rerun courant. ---
-        maj_valeur = derniere_maj.strftime('%d/%m %H:%M') if derniere_maj else "—"
-
         st.markdown(
             f"""
             <div class="gs-kpi-row">
-              <div class="gs-kpi-card">
-                <div class="gs-kpi-label">Dernière donnée</div>
-                <div class="gs-kpi-value">{escape(maj_valeur)}</div>
-              </div>
               <div class="gs-kpi-card">
                 <div class="gs-kpi-label">Pépite du moment</div>
                 <div class="gs-kpi-value">{escape(pepite_valeur)}</div>

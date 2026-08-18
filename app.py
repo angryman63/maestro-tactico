@@ -5,7 +5,6 @@ import io
 import sys
 import os
 import time
-from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -265,16 +264,10 @@ FICHIER_N1 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "n
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def charger_depuis_github(url: str):
-    """Renvoie (df, heure_recuperation) — l'horodatage est calculé ICI, à
-    l'intérieur de la fonction mise en cache (pas à l'appel), pour qu'il soit
-    mémorisé avec le DataFrame : tant que le cache est valide (ttl=3600s),
-    tous les appels renvoient le MÊME horodatage, celui de la vraie
-    récupération réseau — pas l'heure de chaque rerun qui retomberait sur le
-    cache. Affiché sur Mercato comme repère de fraîcheur des données."""
     response = requests.get(url, timeout=20)
     response.raise_for_status()
     df = pd.read_excel(io.BytesIO(response.content))
-    return df, datetime.now()
+    return df
 
 @st.cache_data(show_spinner=False)
 def charger_reference_n1(chemin: str):
@@ -296,9 +289,8 @@ if not donnees_chargees:
             barre.progress(i, text="Connexion à la base joueurs…")
 
     try:
-        df_raw, derniere_maj = charger_depuis_github(GITHUB_URL)
+        df_raw = charger_depuis_github(GITHUB_URL)
         st.session_state["df_joueurs"] = df_raw
-        st.session_state["derniere_maj"] = derniere_maj
         st.session_state["df_joueurs_n1"] = charger_reference_n1(FICHIER_N1)
     except ValueError as e:
         placeholder.empty()
@@ -313,7 +305,6 @@ if not donnees_chargees:
 
 df = st.session_state["df_joueurs"]
 df_n1 = st.session_state["df_joueurs_n1"]
-derniere_maj = st.session_state.get("derniere_maj")
 
 # ============================================================
 # TRAITEMENT DES DONNÉES
@@ -531,7 +522,7 @@ elif page_selectionnee == "Conseiller hebdo":
     afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, st.session_state["mes_joueurs_input"], filtrer)
 
 elif page_selectionnee == "Mercato":
-    afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, derniere_maj)
+    afficher_mercato(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle)
     _afficher_pied_de_page()
 
 elif page_selectionnee == "Simuler le match":
