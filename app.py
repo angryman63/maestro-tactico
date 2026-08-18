@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import requests
 import io
@@ -26,6 +27,35 @@ st.set_page_config(
     page_title="Maestro Tactico",
     page_icon="⚽",
     layout="wide"
+)
+
+# ============================================================
+# VIEWPORT FIXE — force le rendu "version pour ordinateur" sur mobile.
+# Streamlit ne donne pas d'accès direct au <head> (st.markdown injecte dans le
+# body, pas le head), donc on passe par un composant iframe same-origin : le JS
+# à l'intérieur atteint window.parent.document pour réécrire la balise <meta
+# viewport> par défaut (width=device-width) en une largeur fixe. Sans
+# initial-scale ni user-scalable=no, pour ne pas bloquer le zoom pincé — le
+# navigateur mobile choisit lui-même l'échelle pour faire tenir 1024px de
+# largeur virtuelle à l'écran, exactement l'effet "afficher la version pour
+# ordinateur". Aucun effet sur desktop (la meta viewport y est ignorée).
+# ============================================================
+components.html(
+    """
+    <script>
+    (function() {
+        var doc = window.parent.document;
+        var meta = doc.querySelector('meta[name="viewport"]');
+        if (!meta) {
+            meta = doc.createElement('meta');
+            meta.name = 'viewport';
+            doc.head.appendChild(meta);
+        }
+        meta.setAttribute('content', 'width=1024');
+    })();
+    </script>
+    """,
+    height=0,
 )
 
 # ============================================================
