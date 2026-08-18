@@ -141,7 +141,21 @@ html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
    Python permet de savoir quelle page est affichée (st.tabs ne le permet pas),
    ce qui est nécessaire pour n'afficher la sidebar "Mes joueurs" que sur
    Conseiller Hebdo. Stylé en pastilles pour reproduire visuellement l'ancienne
-   barre d'onglets. */
+   barre d'onglets.
+
+   Le conteneur Streamlit de ce widget (.st-key-nav_radio, le stElementContainer
+   généré autour du st.radio) a lui-même width:fit-content en dur (règle interne
+   Streamlit, cf. sa classe st-emotion-cache-*) au lieu de s'étirer sur toute la
+   largeur du bloc vertical parent — d'où la barre de pastilles collée à gauche
+   au lieu d'être centrée comme le wordmark au-dessus. width:100% !important
+   nécessaire pour primer sur cette règle interne (même spécificité de
+   sélecteur, sinon c'est l'ordre d'injection qui déciderait). */
+.st-key-nav_radio {
+    display: flex !important;
+    justify-content: center;
+    width: 100% !important;
+}
+
 .st-key-nav_radio [data-testid="stRadioGroup"] {
     background-color: #1a1a1a !important;
     border: 1px solid #2a2a2a !important;

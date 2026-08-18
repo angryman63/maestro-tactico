@@ -148,7 +148,7 @@ def _pill_alerte(val):
 def _formater_cellule_hebdo(col, val):
     if col == 'Régularité':
         return _pill_regularite(val)
-    if col == 'Fiabilité':
+    if col == 'Source':
         return _pill_fiabilite(val)
     if col == 'Alerte':
         return _pill_alerte(val)
@@ -164,7 +164,7 @@ def _formater_cellule_hebdo(col, val):
 @st.cache_data(show_spinner=False)
 def _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, journee_actuelle):
     """Construit df_scores (une ligne par joueur : Note saison/Forme 6J/
-    Régularité/% Titulaire/Fiabilité/Alerte/_score) — pure fonction de ces 5
+    Régularité/% Titulaire/Source/Alerte/_score) — pure fonction de ces 5
     arguments, mise en cache car la boucle df.iterrows() ci-dessous (avec un
     lookup trouver_historique_n1 sur df_n1 à chaque ligne) prend 1-2 secondes
     et ne dépend ni du filtre "mes joueurs" ni de l'onglet poste/tri
@@ -177,7 +177,7 @@ def _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, jour
     # joueurs étaient simplement exclus (`continue`), invisibles sur Hebdo —
     # mieux vaut une estimation prudente (médiane N-1 du poste, même
     # convention que le repli poste déjà utilisé sur Mercato) clairement
-    # signalée comme telle (colonne "Fiabilité") qu'une absence totale.
+    # signalée comme telle (colonne "Source") qu'une absence totale.
     # mediane_n1_par_poste (modele.py) : fonction centralisée, partagée à
     # l'identique par Mercato et app.py::_verifier_noms_joueurs — un seul
     # calcul de médiane N-1 par poste pour les 3, jamais 3 calculs indépendants
@@ -232,7 +232,7 @@ def _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, jour
         # (ex. Ikoné) a lui aussi matchs_joues == 0, et afficherait sinon une
         # 'Note saison' à 0 à côté d'une 'Forme 6J' à 5.98 — les deux colonnes
         # portent alors la même estimation (personnelle N-1, ou poste si
-        # vraiment aucune donnée n'existe — signalé par "Fiabilité" dans ce
+        # vraiment aucune donnée n'existe — signalé par "Source" dans ce
         # seul cas).
         matchs_joues = compter_matchs(row, cols_journees)
         if matchs_joues == 0:
@@ -240,7 +240,7 @@ def _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, jour
         else:
             moyenne_saison = float(row['Note']) if 'Note' in df.columns else note_forme
 
-        # Fiabilité : signale UNIQUEMENT le cas où aucune donnée n'existe nulle
+        # Source : signale UNIQUEMENT le cas où aucune donnée n'existe nulle
         # part (ni cette saison, ni en N-1 — la médiane du poste est une pure
         # supposition, ex. promu de Ligue 2). Un débutant tardif dont le N-1
         # personnel sert de base (estimation_poste == False, note_forme vient
@@ -274,7 +274,7 @@ def _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, jour
             # %Titu stabilisé affiche un chiffre différent d'une page à l'autre
             # par simple artefact de virgule flottante (ex. 56.99999999999999).
             '% Titulaire': f"{round(prob_jouer*100)}%",
-            'Fiabilité': fiabilite,
+            'Source': fiabilite,
             'Alerte': alerte,
             '_score': round(float(score), 2)
         })
@@ -330,7 +330,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
 """)
 
     separateur("RECOMMANDATIONS PAR POSTE")
-    colonnes_affichage = ['Joueur', 'Club', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité', 'Alerte']
+    colonnes_affichage = ['Joueur', 'Club', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Source', 'Alerte']
 
     if filtrer and mes_joueurs_input.strip():
         tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -338,7 +338,7 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             "Milieux Déf.", "Défenseurs C.", "Défenseurs L.", "Gardiens"
         ], key="hebdo_postes")
         with tab0:
-            colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Fiabilité', 'Alerte']
+            colonnes_mes_joueurs = ['Joueur', 'Club', 'Poste', 'Note saison', 'Forme 6J', 'Régularité', '% Titulaire', 'Source', 'Alerte']
             top = df_mes_joueurs.sort_values('_score', ascending=False)[colonnes_mes_joueurs + ['_score']]
             if len(top) > 0:
                 _afficher_tableau_triable(

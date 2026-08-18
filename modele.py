@@ -125,12 +125,18 @@ SEUIL_BLESSURE_LONGUE = 8
 
 def alerte_blessure(row, cols_journees, journee_actuelle=None):
     """journee_actuelle=None (par défaut) préserve l'ancien comportement pour
-    les appelants qui ne le passent pas encore. Sous J3 : même en filtrant les
-    journées pas encore jouées (cf. absences_consecutives), l'échantillon
-    disponible est trop mince (0-2 matchs pour tout le monde) pour distinguer
-    "saison à peine commencée" de "vraiment absent" — le badge est alors
-    dénué de sens et supprimé plutôt que d'afficher un retour de blessure
-    généralisé sur un échantillon non significatif.
+    les appelants qui ne le passent pas encore.
+
+    Pas de garde sur le début de saison : un joueur marqué "Indispo ?" doit
+    afficher son badge dès la journée 1, pas seulement à partir de J3 — c'est
+    un vrai signal externe (pas une inférence sur un échantillon de notes),
+    aucune raison de le masquer tant que la saison est jeune. Les badges
+    "Retour"/"Jamais titulaire" ci-dessous restent naturellement silencieux
+    tôt en saison sans garde explicite : absences_consecutives() ne peut pas
+    dépasser journee_actuelle (aucune journée au-delà de la journée courante
+    à compter), donc leurs seuils propres (4, respectivement
+    SEUIL_BLESSURE_LONGUE) ne peuvent structurellement pas être atteints
+    avant J4/J8.
 
     "Retour" suppose d'avoir déjà joué cette saison puis de s'être arrêté —
     un joueur qui n'a JAMAIS été titularisé cette saison (matchs_joues == 0 :
@@ -139,8 +145,6 @@ def alerte_blessure(row, cols_journees, journee_actuelle=None):
     tort une blessure qui n'existe pas. Distingué par un badge dédié (🆕),
     même seuil (4 matchs calendaires écoulés) mais sans le vocabulaire de
     retour de blessure."""
-    if journee_actuelle is not None and journee_actuelle < 3:
-        return ""
     indispo = row.get('Indispo ?', False)
     absences = absences_consecutives(row, cols_journees, journee_actuelle)
     matchs_joues = compter_matchs(row, cols_journees)
