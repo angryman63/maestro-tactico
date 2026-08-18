@@ -454,7 +454,17 @@ def _construire_df_mercato(df, df_n1, cols_journees, cols_journees_n1, journee_a
     # critère qui l'y a placé.
     # 1. Cher pour SON poste (au-delà du 60e percentile) ET décevant pour SON poste
     #    (note sous la médiane) — seuils relatifs au poste, pas de seuil universel.
-    mask_cher_decevant = (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
+    #    Exemption "Très demandé" (même palier que _tension(), pct >= 80) : un
+    #    joueur cher-décevant mais massivement enchéri par le marché (ex. Openda,
+    #    Cote=30 sans historique N-1, Tension ~81-91% selon la taille de ligue)
+    #    ne doit pas être classé "À éviter" tout en étant simultanément affiché
+    #    "🔥🔥 Très demandé" ailleurs sur la page — contradictoire pour
+    #    l'utilisateur. Les 3 autres critères d'"À éviter" restent indépendants
+    #    de la demande.
+    mask_cher_decevant = (
+        (df_mercato['Cote_pct'] > 0.60) & (df_mercato['Note_pct'] < 0.50)
+        & ~df_mercato['Tension'].str.contains('Très demandé', na=False)
+    )
     # 2. Joue très peu (matchs_joues / journee_actuelle < 20%), à partir
     #    de la journée 8 — même seuil calendaire que celui déjà utilisé par le
     #    modèle hybride (poids_phase, plafond_calendaire=True). Avant J8, repli
