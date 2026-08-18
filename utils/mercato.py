@@ -103,7 +103,10 @@ def _pill_demande(val):
         return pill(val, 'good')
     if 'Peu demandé' in val:
         return pill(val, 'warn')
-    return dash(val)
+    # Donnée manquante (_tension() renvoie "?" quand AchatT1 est NaN) : un tiret
+    # propre, cohérent avec le reste du tableau (ex. la colonne Enchère pour un
+    # joueur comme Diatta), pas le symbole "?" brut passé tel quel à dash().
+    return dash()
 
 
 def _pill_alerte(val):
@@ -134,7 +137,10 @@ def _formater_cellule(col, val):
     if col.startswith('Enchère moy.'):
         return f"{val:.1f}"
     if col == 'Note':
-        return f"{val:.2f}"
+        # Déjà une chaîne prête à l'affichage (formatée dans _construire_df_mercato,
+        # avec astérisque + infobulle pour une Note purement estimée sur la médiane
+        # du poste) — pas une valeur numérique brute à reformater ici.
+        return val
     if col == 'Buts':
         return f"{val:.0f}"
     if col == '% Titu (estimé)':
@@ -342,14 +348,29 @@ def _construire_df_mercato(df, df_n1, cols_journees, cols_journees_n1, journee_a
         # faux zéro brut.
         note_mediane_poste, note_repli_global = mediane_n1_par_poste(df_n1, 'Note')
 
-    df_mercato['NoteStabilisee'] = df.apply(
-        lambda row: stabiliser_valeur_saison(
-            trouver_historique_n1(row['Joueur'], row['Poste'], df_n1), cols_journees_n1,
-            row, cols_journees, journee_actuelle, 'Note',
+    def _note_stabilisee_et_estimation(row):
+        row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+        valeur = stabiliser_valeur_saison(
+            row_n1, cols_journees_n1, row, cols_journees, journee_actuelle, 'Note',
             note_mediane_poste.get(row['Poste'], note_repli_global)
-        ),
-        axis=1
-    )
+        )
+        # Estimation "poste" (à signaler à l'affichage, cf. plus bas) : aucun match
+        # joué cette saison ET aucune Note N-1 personnelle exploitable — même
+        # condition que utils/hebdo.py::afficher_hebdo (estimation_poste). Un joueur
+        # à 0 match cette saison mais avec un historique N-1 personnel fiable n'est
+        # PAS concerné : sa Note stabilisée vient (au moins en partie) de sa propre
+        # donnée passée, pas uniquement d'une médiane générique de poste.
+        if compter_matchs(row, cols_journees) > 0:
+            estimee = False
+        elif row_n1 is None:
+            estimee = True
+        else:
+            estimee = pd.isna(pd.to_numeric(row_n1.get('Note', None), errors='coerce'))
+        return estimee, valeur
+
+    _note_resultat = df.apply(_note_stabilisee_et_estimation, axis=1, result_type='expand')
+    df_mercato['NoteEstimeePoste'] = _note_resultat[0]
+    df_mercato['NoteStabilisee'] = _note_resultat[1]
     df_mercato['NoteStabilisee'] = df_mercato['NoteStabilisee'].fillna(df_mercato['Note'])
 
     # %Titu stabilisé (même principe que NoteStabilisee, même fonction générique) :
@@ -383,7 +404,24 @@ def _construire_df_mercato(df, df_n1, cols_journees, cols_journees_n1, journee_a
     # mêmes colonnes stabilisées. 'Buts' et 'Matchs_joues' restent bruts : ce
     # sont de vraies informations factuelles sur la saison en cours (0 y est
     # honnête), pas des estimations à stabiliser.
-    df_mercato['Note'] = df_mercato['NoteStabilisee']
+    #
+    # Marqueur d'estimation (point demandé) : contrairement à Conseiller Hebdo
+    # (colonne dédiée "Fiabilité : Estimé (poste)"), Mercato n'a pas de colonne
+    # libre pour ça dans un tableau déjà dense — un astérisque + infobulle est
+    # directement intégré à la valeur affichée plutôt que d'ajouter une colonne.
+    # Fait ici, une seule fois, plutôt que dans _formater_cellule (qui ne reçoit
+    # que la valeur de la cellule, pas la ligne entière — impossible d'y lire
+    # NoteEstimeePoste pour la même ligne).
+    df_mercato['Note'] = df_mercato.apply(
+        lambda row: (
+            f'<span title="Aucune donnée exploitable cette saison ni la saison '
+            f'passée (ex. transfert sans historique Ligue 1) — Note calculée sur '
+            f'la médiane du poste plutôt que sur un vrai historique du joueur." '
+            f'style="cursor:help;">{row["NoteStabilisee"]:.2f}'
+            f'<sup style="color:#c8a84b;"> *</sup></span>'
+        ) if row['NoteEstimeePoste'] else f'{row["NoteStabilisee"]:.2f}',
+        axis=1
+    )
     df_mercato['%Titu'] = df_mercato['TituStabilisee']
 
     stats_notes = df.apply(lambda row: _moyenne_ecart_type_notes(row, cols_journees), axis=1)
