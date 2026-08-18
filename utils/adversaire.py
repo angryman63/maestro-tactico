@@ -9,6 +9,21 @@ from utils.table_style import inject_style, pill, escape, separateur
 
 _MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
 
+# calculer_contexte_ligue/calculer_repli_stabilisation (modele.py) sont pures
+# fonctions de (df, cols_journees) mais itèrent tout le dataframe — mises en
+# cache ici (pas dans modele.py, qui reste volontairement sans dépendance à
+# Streamlit) pour ne pas être recalculées à chaque interaction sur la page
+# (changement de mode d'analyse, saisie des compos...) qui ne change ni df ni
+# cols_journees.
+@st.cache_data(show_spinner=False)
+def _calculer_contexte_ligue_cache(df, cols_journees):
+    return calculer_contexte_ligue(df, cols_journees)
+
+
+@st.cache_data(show_spinner=False)
+def _calculer_repli_stabilisation_cache(df, cols_journees):
+    return calculer_repli_stabilisation(df, cols_journees)
+
 # Seuil de significativité du gain de bonus (points de %) — au-delà duquel un gain
 # est jugé assez important pour recommander d'utiliser le bonus plutôt que de
 # l'économiser. Variable selon l'enjeu réel du match : un match Crucial justifie
@@ -288,9 +303,9 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         unsafe_allow_html=True
     )
 
-    moyennes_lignes, notes_mediane_poste, buts_mediane_poste = calculer_contexte_ligue(df, cols_journees)
+    moyennes_lignes, notes_mediane_poste, buts_mediane_poste = _calculer_contexte_ligue_cache(df, cols_journees)
     (moyenne_mediane_poste, moyenne_repli_global,
-     ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)
+     ecart_type_mediane_poste, ecart_type_repli_global) = _calculer_repli_stabilisation_cache(df, cols_journees)
 
     separateur("MODE D'ANALYSE")
     mode_analyse = st.radio(

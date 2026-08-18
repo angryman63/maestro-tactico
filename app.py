@@ -39,24 +39,35 @@ st.set_page_config(
 # navigateur mobile choisit lui-même l'échelle pour faire tenir 1024px de
 # largeur virtuelle à l'écran, exactement l'effet "afficher la version pour
 # ordinateur". Aucun effet sur desktop (la meta viewport y est ignorée).
+#
+# Injectée une seule fois par session (flag session_state) plutôt qu'à chaque
+# rerun : window.parent.document est le document du navigateur, qui persiste
+# d'un rerun Streamlit à l'autre (React ne recharge pas la page) — une fois la
+# balise meta réécrite, elle le reste jusqu'au prochain vrai rechargement de
+# page, qui réinitialise aussi session_state et redéclenche donc l'injection.
+# Profilage : gain mesuré négligeable (~1ms après le tout premier appel), fait
+# ici surtout par correction (éviter un composant + un aller-retour iframe
+# inutiles à chaque navigation).
 # ============================================================
-components.html(
-    """
-    <script>
-    (function() {
-        var doc = window.parent.document;
-        var meta = doc.querySelector('meta[name="viewport"]');
-        if (!meta) {
-            meta = doc.createElement('meta');
-            meta.name = 'viewport';
-            doc.head.appendChild(meta);
-        }
-        meta.setAttribute('content', 'width=1024');
-    })();
-    </script>
-    """,
-    height=0,
-)
+if "viewport_injecte" not in st.session_state:
+    components.html(
+        """
+        <script>
+        (function() {
+            var doc = window.parent.document;
+            var meta = doc.querySelector('meta[name="viewport"]');
+            if (!meta) {
+                meta = doc.createElement('meta');
+                meta.name = 'viewport';
+                doc.head.appendChild(meta);
+            }
+            meta.setAttribute('content', 'width=1024');
+        })();
+        </script>
+        """,
+        height=0,
+    )
+    st.session_state["viewport_injecte"] = True
 
 # ============================================================
 # CSS GLOBAL — IDENTITÉ VISUELLE MAESTRO TACTICO

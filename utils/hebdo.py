@@ -161,13 +161,15 @@ def _formater_cellule_hebdo(col, val):
     return str(val)
 
 
-def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, mes_joueurs_input, filtrer):
-    inject_style()
-
-    bandeau = get_bandeau_avertissement(journee_actuelle)
-    if bandeau:
-        st.warning(bandeau)
-
+@st.cache_data(show_spinner=False)
+def _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, journee_actuelle):
+    """Construit df_scores (une ligne par joueur : Note saison/Forme 6J/
+    Régularité/% Titulaire/Fiabilité/Alerte/_score) — pure fonction de ces 5
+    arguments, mise en cache car la boucle df.iterrows() ci-dessous (avec un
+    lookup trouver_historique_n1 sur df_n1 à chaque ligne) prend 1-2 secondes
+    et ne dépend ni du filtre "mes joueurs" ni de l'onglet poste/tri
+    sélectionné — sans cache, elle était recalculée à l'identique à chaque
+    interaction sur la page."""
     # Repli ultime pour un joueur sans AUCUNE donnée exploitable, ni cette
     # saison ni en N-1 (predire_note_hybride renvoie alors None) — typiquement
     # un promu de Ligue 2 (ex. Le Mans, Troyes en 26-27), absent du fichier
@@ -292,6 +294,18 @@ def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
             ),
             axis=1
         )
+
+    return df_scores
+
+
+def afficher_hebdo(df, cols_journees, df_n1, cols_journees_n1, journee_actuelle, mes_joueurs_input, filtrer):
+    inject_style()
+
+    bandeau = get_bandeau_avertissement(journee_actuelle)
+    if bandeau:
+        st.warning(bandeau)
+
+    df_scores = _construire_df_scores_hebdo(df, df_n1, cols_journees, cols_journees_n1, journee_actuelle)
 
     df_mes_joueurs = df_scores.copy()
     if filtrer and mes_joueurs_input.strip():
