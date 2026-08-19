@@ -661,7 +661,8 @@ def chercher_lignes_joueur(nom_joueur, df, club=None):
 def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, journee_actuelle=999,
                      moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None, club=None,
                      moyenne_mediane_poste=None, moyenne_repli_global=None,
-                     ecart_type_mediane_poste=None, ecart_type_repli_global=None):
+                     ecart_type_mediane_poste=None, ecart_type_repli_global=None,
+                     note_mediane_poste_n1=None, note_repli_global_n1=None):
     row = chercher_lignes_joueur(nom_joueur, df, club)
     if len(row) == 0:
         return None
@@ -673,6 +674,24 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         row_n1, cols_n1 if cols_n1 is not None else cols_journees,
         row, cols_journees, journee_actuelle
     )
+    # Repli médiane N-1 du poste (même mediane_n1_par_poste() et même convention
+    # que Conseiller Hebdo/Mercato) quand predire_note_hybride() ne trouve
+    # littéralement AUCUNE donnée exploitable, ni cette saison ni en N-1 (ex.
+    # Openda, transfert sans passage en Ligue 1 la saison passée) : sans ce
+    # repli, note_pred restait à None ("Données insuffisantes" affiché sur
+    # Simuler le match) alors que proba_but, lui, utilise déjà ce même genre de
+    # repli poste (stabiliser_stats_proba_but ci-dessous) — incohérence visible
+    # côte à côte (ex. "Données insuffisantes" + "Proba But MPG 9%" sur la même
+    # ligne). note_estimee (exposée dans le dict retourné) marque ce cas pour
+    # l'affichage, même esprit que le badge "Estimé (poste)" de Hebdo ou
+    # l'astérisque de Mercato — jamais une vraie prédiction à confondre avec les
+    # autres.
+    note_estimee = note_pred is None
+    if note_estimee and note_mediane_poste_n1 is not None:
+        note_pred = note_mediane_poste_n1.get(poste, note_repli_global_n1)
+        if pd.isna(note_pred):
+            note_pred = None
+    note_estimee = note_estimee and note_pred is not None
 
     buts_moy = pd.to_numeric(row.get('Buts', 0), errors='coerce')
     matchs = compter_matchs(row, cols_journees)
@@ -765,6 +784,7 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         'nom': row['Joueur'],
         'poste': poste,
         'note_pred': note_pred,
+        'note_estimee': note_estimee,
         'buts': buts_par_match,
         'proba_but': proba_but,
         'regularite': regularite,

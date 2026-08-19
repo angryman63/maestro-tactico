@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from modele import (get_joueur_info, chercher_lignes_joueur, poste_vers_ligne, trouver_historique_n1,
                     stabiliser_stats_proba_but, calculer_repli_stabilisation,
-                    monte_carlo_match, calculer_contexte_ligue)
+                    monte_carlo_match, calculer_contexte_ligue, mediane_n1_par_poste)
 from utils.table_style import inject_style, pill, escape, separateur
 
 _MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
@@ -53,6 +53,15 @@ def _calculer_repli_stabilisation_cache(df, cols_journees, df_n1, cols_journees_
 
     return (moyenne_mediane_poste, moyenne_repli_global,
             ecart_type_mediane_poste, ecart_type_repli_global)
+
+
+# Même repli médiane N-1 par poste que Conseiller Hebdo/Mercato pour note_pred
+# (get_joueur_info) — mise en cache pour la même raison que les deux fonctions
+# ci-dessus (pas dans modele.py, sans dépendance Streamlit).
+@st.cache_data(show_spinner=False)
+def _mediane_n1_par_poste_cache(df_n1, colonne):
+    return mediane_n1_par_poste(df_n1, colonne)
+
 
 # Seuil de significativité du gain de bonus (points de %) — au-delà duquel un gain
 # est jugé assez important pour recommander d'utiliser le bonus plutôt que de
@@ -230,14 +239,16 @@ bonus_key_map = {
 def meilleure_compo(noms_joueurs, df, cols_journees, df_n1, cols_n1, journee_actuelle,
                      moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
                      moyenne_mediane_poste=None, moyenne_repli_global=None,
-                     ecart_type_mediane_poste=None, ecart_type_repli_global=None):
+                     ecart_type_mediane_poste=None, ecart_type_repli_global=None,
+                     note_mediane_poste_n1=None, note_repli_global_n1=None):
     joueurs_info = []
     for nom in [n.strip() for n in noms_joueurs.split('\n') if n.strip()]:
         info = get_joueur_info(
             nom, df, cols_journees, df_n1, cols_n1, journee_actuelle,
             moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
             moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
-            ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
+            ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
+            note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
         )
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
@@ -283,7 +294,23 @@ def _roster_html(equipe, extra_badge_fn=None):
     lignes_html = []
     for ligne in ['GB', 'DEF', 'MIL', 'ATT']:
         for j in equipe.get(ligne, []):
-            note = f"{j['note_pred']:.2f}" if j['note_pred'] else "Données insuffisantes"
+            if j['note_pred'] is None:
+                note = "Données insuffisantes"
+            elif j.get('note_estimee'):
+                # Même convention que Mercato (astérisque + infobulle intégrés à la
+                # valeur plutôt qu'une colonne dédiée) pour une note qui ne vient
+                # d'aucune donnée exploitable du joueur (ni cette saison ni en
+                # N-1) mais de la médiane de son poste — pas une vraie prédiction,
+                # à ne pas confondre avec les autres notes de la compo.
+                note = (
+                    f'<span title="Aucune donnée exploitable cette saison ni la '
+                    f'saison passée (ex. transfert sans historique Ligue 1) — Note '
+                    f'calculée sur la médiane du poste plutôt que sur un vrai '
+                    f'historique du joueur." style="cursor:help;">{j["note_pred"]:.2f}'
+                    f'<sup style="color:#c8a84b;"> *</sup></span>'
+                )
+            else:
+                note = f"{j['note_pred']:.2f}"
             badges = ""
             if j.get('alerte'):
                 # 🆕 (jamais titulaire cette saison) n'est pas une alerte de
@@ -356,6 +383,7 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
      ecart_type_mediane_poste, ecart_type_repli_global) = _calculer_repli_stabilisation_cache(
         df, cols_journees, df_n1, cols_journees_n1
     )
+    note_mediane_poste_n1, note_repli_global_n1 = _mediane_n1_par_poste_cache(df_n1, 'Note')
 
     separateur("MODE D'ANALYSE")
     mode_analyse = st.radio(
@@ -563,7 +591,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                     nom, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
                     moyennes_lignes, notes_mediane_poste, buts_mediane_poste, club=club,
                     moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
-                    ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
+                    ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
+                    note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
                 )
                 if info:
                     titu_info.append(info)
@@ -590,7 +619,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 df_n1, cols_journees_n1, journee_actuelle,
                 moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
                 moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
-                ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
+                ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
+                note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
             )
 
         # Alertes joueurs non trouvés
@@ -633,7 +663,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 nom_rempl_regle, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
                 moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
                 moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
-                ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
+                ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
+                note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
             )
             if not info_rempl:
                 continue
