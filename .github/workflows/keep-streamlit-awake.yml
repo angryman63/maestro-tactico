@@ -1,0 +1,102 @@
+name: Garder Streamlit éveillé
+
+# Streamlit Community Cloud endort un déploiement après une période sans
+# trafic (~12h). Un simple GET (curl) ne suffit pas forcément à empêcher ça,
+# ni à réveiller l'app une fois endormie : une app endormie répond par une
+# coquille HTML statique ("Zzzz... this app has gone to sleep") avec un
+# bouton "Yes, get this app back up!" plutôt que par l'app réelle -- il faut
+# une vraie visite (JS exécuté, éventuellement ce bouton cliqué) pour
+# relancer le conteneur, pas juste une requête HTTP brute. Ce workflow ouvre
+# donc la page dans un navigateur headless (Playwright) et clique ce bouton
+# s'il est présent, toutes les 6h -- bien en dessous du seuil d'inactivité,
+# pour ne jamais laisser l'app s'endormir.
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Visiter l'app (et la réveiller si besoin)
+        env:
+          APP_URL: https://maestro-tactico.streamlit.app/
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from playwright.sync_api import sync_playwright
+
+          app_url = os.environ["APP_URL"]
+          # Variantes de libellé observées sur le bouton de réveil de
+          # Streamlit Community Cloud -- recherche insensible à la casse,
+          # sur bouton/lien/div cliquable pour rester robuste à un
+          # changement de balisage.
+          motifs_reveil = [
+              re.compile(r"get this app back up", re.IGNORECASE),
+              re.compile(r"wake this app", re.IGNORECASE),
+              re.compile(r"restart this app", re.IGNORECASE),
+          ]
+
+          with sync_playwright() as p:
+              navigateur = p.chromium.launch()
+              page = navigateur.new_page(viewport={"width": 1280, "height": 900})
+              page.set_default_timeout(60000)
+
+              print(f"Ouverture de {app_url} ...")
+              page.goto(app_url, wait_until="load", timeout=60000)
+              page.wait_for_timeout(6000)
+
+              clique = False
+              for motif in motifs_reveil:
+                  bouton = page.locator("button, a, div[role='button']").filter(has_text=motif)
+                  if bouton.count() > 0:
+                      print(f"Bouton de réveil détecté (motif: {motif.pattern!r}), clic...")
+                      bouton.first.click(timeout=5000)
+                      clique = True
+                      break
+
+              if clique:
+                  # Le redémarrage du conteneur peut prendre jusqu'à une
+                  # bonne minute -- on laisse le temps à l'app réelle de
+                  # charger avant la capture finale.
+                  page.wait_for_timeout(30000)
+                  try:
+                      page.wait_for_load_state("networkidle", timeout=60000)
+                  except Exception:
+                      pass
+              else:
+                  print("Aucun bouton de réveil détecté -- l'app semble déjà active.")
+
+              titre = page.title()
+              taille_html = len(page.content())
+              print(f"Titre de la page : {titre!r} -- {taille_html} caractères de HTML chargés.")
+
+              page.screenshot(path="streamlit_keepalive.png", full_page=True)
+              navigateur.close()
+
+          print("Résultat :", "bouton de réveil cliqué, app relancée." if clique else "ping simple, app déjà éveillée.")
+          PY
+
+      - name: Publier la capture d'écran
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamlit-keepalive-screenshot
+          path: streamlit_keepalive.png
+          retention-days: 3
