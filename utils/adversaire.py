@@ -21,8 +21,38 @@ def _calculer_contexte_ligue_cache(df, cols_journees):
 
 
 @st.cache_data(show_spinner=False)
-def _calculer_repli_stabilisation_cache(df, cols_journees):
-    return calculer_repli_stabilisation(df, cols_journees)
+def _calculer_repli_stabilisation_cache(df, cols_journees, df_n1, cols_journees_n1):
+    (moyenne_mediane_poste, moyenne_repli_global,
+     ecart_type_mediane_poste, ecart_type_repli_global) = calculer_repli_stabilisation(df, cols_journees)
+
+    # Repli ultime sur la saison N-1 : en tout début de saison, aucun joueur
+    # n'a encore >= 3 matchs cette saison, donc le repli "saison en cours"
+    # calculé ci-dessus est vide (dicts vides + médianes globales NaN) pour
+    # tout le monde. Sans repli supplémentaire, un joueur sans note actuelle
+    # ET sans historique N-1 personnel (row_n1 = None dans
+    # stabiliser_stats_proba_but, ex. transfert sans passage en Ligue 1 la
+    # saison passée, type Openda) fait renvoyer (None, None) à
+    # stabiliser_stats_proba_but(), qui plante float(None) dans
+    # _joueur_vers_mc() — Simuler le match n'a alors plus aucun repli du
+    # tout, contrairement à Mercato (repli neutre 5.0/1.0 câblé en dur côté
+    # appelant). La saison N-1, elle, est terminée : toujours assez de
+    # joueurs à >= 3 matchs pour fournir un repli par poste crédible — {**a,
+    # **b} pour que le repli saison en cours (déjà calculé) prime poste par
+    # poste dès qu'il existe, le N-1 ne comblant que les postes manquants.
+    if pd.isna(moyenne_repli_global) or pd.isna(ecart_type_repli_global) or not moyenne_mediane_poste:
+        (moyenne_mediane_poste_n1, moyenne_repli_global_n1,
+         ecart_type_mediane_poste_n1, ecart_type_repli_global_n1) = calculer_repli_stabilisation(
+            df_n1, cols_journees_n1
+        )
+        moyenne_mediane_poste = {**moyenne_mediane_poste_n1, **moyenne_mediane_poste}
+        ecart_type_mediane_poste = {**ecart_type_mediane_poste_n1, **ecart_type_mediane_poste}
+        if pd.isna(moyenne_repli_global):
+            moyenne_repli_global = moyenne_repli_global_n1
+        if pd.isna(ecart_type_repli_global):
+            ecart_type_repli_global = ecart_type_repli_global_n1
+
+    return (moyenne_mediane_poste, moyenne_repli_global,
+            ecart_type_mediane_poste, ecart_type_repli_global)
 
 # Seuil de significativité du gain de bonus (points de %) — au-delà duquel un gain
 # est jugé assez important pour recommander d'utiliser le bonus plutôt que de
@@ -305,7 +335,9 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
 
     moyennes_lignes, notes_mediane_poste, buts_mediane_poste = _calculer_contexte_ligue_cache(df, cols_journees)
     (moyenne_mediane_poste, moyenne_repli_global,
-     ecart_type_mediane_poste, ecart_type_repli_global) = _calculer_repli_stabilisation_cache(df, cols_journees)
+     ecart_type_mediane_poste, ecart_type_repli_global) = _calculer_repli_stabilisation_cache(
+        df, cols_journees, df_n1, cols_journees_n1
+    )
 
     separateur("MODE D'ANALYSE")
     mode_analyse = st.radio(
