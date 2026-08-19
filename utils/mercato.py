@@ -6,6 +6,7 @@ from modele import (
     predire_note_hybride, trouver_historique_n1, poste_vers_ligne, simuler_proba_but,
     calculer_regularite_brute, stabiliser_valeur_saison, stabiliser_stats_proba_but, normaliser_recherche,
     mediane_n1_par_poste, calculer_repli_stabilisation, SEUIL_BLESSURE_LONGUE,
+    construire_distribution_n1_par_poste, note_percentile_n1,
 )
 from utils.table_style import inject_style, pill, dash, name_cell, table_html, separateur, escape
 
@@ -316,6 +317,13 @@ def _construire_df_mercato(df, df_n1, cols_journees, cols_journees_n1, journee_a
         lambda row: alerte_blessure(row, cols_journees, journee_actuelle), axis=1)
     df_mercato['Ratio'] = df_mercato['Note'] / df_mercato['Cote']  # gardée pour affichage éventuel, plus utilisée dans les scores
 
+    # Rang percentile de Cote par poste — calculé ici (avant NoteStabilisee, pas
+    # avec Note_pct plus bas qui dépend lui de NoteStabilisee) car réutilisé
+    # juste en dessous comme repli individualisé de NoteStabilisee (cf.
+    # note_mediane_poste/note_percentile_n1). Réutilisé tel quel plus bas pour
+    # "À éviter" et les seuils de catégorie (Cote_pct).
+    df_mercato['Cote_pct'] = df_mercato.groupby('Poste')['Cote'].rank(pct=True)
+
     # Note stabilisée (point 9) : la Note brute d'un joueur à 1-2 matchs joués
     # cette saison n'est pas fiable (un seul bon match suffit à la faire
     # décoller) — on la mélange avec sa Note de saison N-1 selon la même
@@ -338,21 +346,41 @@ def _construire_df_mercato(df, df_n1, cols_journees, cols_journees_n1, journee_a
     df_fiable_note = df_mercato.loc[df_mercato['Matchs_joues'] >= 3]
     note_mediane_poste = df_fiable_note.groupby('Poste')['Note'].median().to_dict()
     note_repli_global = df_fiable_note['Note'].median()
-    if pd.isna(note_repli_global):
+    utiliser_repli_n1 = pd.isna(note_repli_global)
+    if utiliser_repli_n1:
         # Tout début de saison : personne n'a encore >= 3 matchs, le repli
-        # "saison en cours" est vide -- repli sur la médiane N-1 par poste
+        # "saison en cours" est vide -- repli sur la distribution N-1 par poste
         # (données réelles, disponibles indépendamment de l'avancement de la
         # saison en cours), pour qu'un joueur sans historique N-1 propre (ex.
         # transfert sans passage en Ligue 1 la saison passée, type Openda)
         # retombe sur une estimation crédible pour son poste plutôt qu'un
         # faux zéro brut.
+        #
+        # Repli individualisé par interpolation continue par percentile
+        # (note_percentile_n1) plutôt qu'une médiane plate partagée par tout le
+        # poste : un joueur à Cote élevée pour son poste (Cote_pct, calculé
+        # plus haut) reçoit une Note N-1 de repli tirée du haut de la
+        # distribution du poste plutôt que la médiane générique. mediane_n1_par_poste
+        # reste calculée en repli ultime, pour les rares cas où Cote_pct est
+        # NaN (ex. Cote manquante) ou la distribution N-1 du poste est vide.
         note_mediane_poste, note_repli_global = mediane_n1_par_poste(df_n1, 'Note')
+        distribution_note_n1_par_poste, distribution_note_n1_globale = (
+            construire_distribution_n1_par_poste(df_n1, 'Note')
+        )
 
     def _note_stabilisee_et_estimation(row):
         row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
+        repli = None
+        if utiliser_repli_n1:
+            cote_pct = df_mercato['Cote_pct'].get(row.name)
+            repli = note_percentile_n1(
+                cote_pct, row['Poste'], distribution_note_n1_par_poste, distribution_note_n1_globale
+            )
+        if repli is None:
+            repli = note_mediane_poste.get(row['Poste'], note_repli_global)
         valeur = stabiliser_valeur_saison(
             row_n1, cols_journees_n1, row, cols_journees, journee_actuelle, 'Note',
-            note_mediane_poste.get(row['Poste'], note_repli_global)
+            repli
         )
         # Estimation "poste" (à signaler à l'affichage, cf. plus bas) : aucun match
         # joué cette saison ET aucune Note N-1 personnelle exploitable — même
@@ -480,9 +508,9 @@ def _construire_df_mercato(df, df_n1, cols_journees, cols_journees_n1, journee_a
     # --- Tension du marché (à partir du % achat T1) ---
     df_mercato['Tension'] = df_mercato['AchatT1'].apply(_tension)
 
-    # --- Rangs percentile Cote/Note par poste (réutilisés par "À éviter" et par les
-    # seuils de catégorie plus bas) ---
-    df_mercato['Cote_pct'] = df_mercato.groupby('Poste')['Cote'].rank(pct=True)
+    # --- Rang percentile Note par poste (Cote_pct déjà calculé plus haut, avant
+    # NoteStabilisee) — réutilisés par "À éviter" et par les seuils de catégorie
+    # plus bas ---
     df_mercato['Note_pct'] = df_mercato.groupby('Poste')['NoteStabilisee'].rank(pct=True)
 
     # À éviter — 3 critères indépendants (logique OU) : un seul suffit à qualifier

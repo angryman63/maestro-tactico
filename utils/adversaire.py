@@ -4,7 +4,8 @@ import pandas as pd
 import numpy as np
 from modele import (get_joueur_info, chercher_lignes_joueur, poste_vers_ligne, trouver_historique_n1,
                     stabiliser_stats_proba_but, calculer_repli_stabilisation,
-                    monte_carlo_match, calculer_contexte_ligue, mediane_n1_par_poste)
+                    monte_carlo_match, calculer_contexte_ligue, mediane_n1_par_poste,
+                    construire_distribution_n1_par_poste)
 from utils.table_style import inject_style, pill, escape, separateur
 
 _MOTIF_NOM_CLUB = re.compile(r'^(.*?)\s*\(([^)]+)\)\s*$')
@@ -57,10 +58,33 @@ def _calculer_repli_stabilisation_cache(df, cols_journees, df_n1, cols_journees_
 
 # Même repli médiane N-1 par poste que Conseiller Hebdo/Mercato pour note_pred
 # (get_joueur_info) — mise en cache pour la même raison que les deux fonctions
-# ci-dessus (pas dans modele.py, sans dépendance Streamlit).
+# ci-dessus (pas dans modele.py, sans dépendance Streamlit). Conservé comme
+# repli ultime (cf. _cote_pct_par_poste_cache/_distribution_n1_par_poste_cache
+# ci-dessous, le repli principal désormais utilisé par get_joueur_info) pour
+# les cas où le percentile de Cote du joueur est indisponible.
 @st.cache_data(show_spinner=False)
 def _mediane_n1_par_poste_cache(df_n1, colonne):
     return mediane_n1_par_poste(df_n1, colonne)
+
+
+# Percentile de Cote (saison en cours) de chaque joueur parmi les joueurs de
+# son poste — même convention que utils/mercato.py (Cote_pct,
+# groupby('Poste')['Cote'].rank(pct=True)) — utilisé par get_joueur_info()
+# pour lire la Note de repli au même percentile dans la distribution N-1 du
+# poste (note_percentile_n1) plutôt qu'une médiane plate partagée par tout le
+# poste. Mis en cache ici pour la même raison que les fonctions ci-dessus.
+@st.cache_data(show_spinner=False)
+def _cote_pct_par_poste_cache(df):
+    cote = pd.to_numeric(df['Cote'], errors='coerce')
+    return cote.groupby(df['Poste']).rank(pct=True)
+
+
+# Distribution N-1 complète de Note par poste (pas seulement sa médiane) pour
+# l'interpolation continue par percentile de get_joueur_info() — mise en cache
+# pour la même raison que les fonctions ci-dessus.
+@st.cache_data(show_spinner=False)
+def _distribution_n1_par_poste_cache(df_n1, colonne):
+    return construire_distribution_n1_par_poste(df_n1, colonne)
 
 
 # Seuil de significativité du gain de bonus (points de %) — au-delà duquel un gain
@@ -240,7 +264,9 @@ def meilleure_compo(noms_joueurs, df, cols_journees, df_n1, cols_n1, journee_act
                      moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
                      moyenne_mediane_poste=None, moyenne_repli_global=None,
                      ecart_type_mediane_poste=None, ecart_type_repli_global=None,
-                     note_mediane_poste_n1=None, note_repli_global_n1=None):
+                     note_mediane_poste_n1=None, note_repli_global_n1=None,
+                     cote_pct_par_joueur=None, distribution_note_n1_par_poste=None,
+                     distribution_note_n1_globale=None):
     joueurs_info = []
     for nom in [n.strip() for n in noms_joueurs.split('\n') if n.strip()]:
         info = get_joueur_info(
@@ -248,7 +274,10 @@ def meilleure_compo(noms_joueurs, df, cols_journees, df_n1, cols_n1, journee_act
             moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
             moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
             ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
-            note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
+            note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1,
+            cote_pct_par_joueur=cote_pct_par_joueur,
+            distribution_note_n1_par_poste=distribution_note_n1_par_poste,
+            distribution_note_n1_globale=distribution_note_n1_globale
         )
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
@@ -305,8 +334,9 @@ def _roster_html(equipe, extra_badge_fn=None):
                 note = (
                     f'<span title="Aucune donnée exploitable cette saison ni la '
                     f'saison passée (ex. transfert sans historique Ligue 1) — Note '
-                    f'calculée sur la médiane du poste plutôt que sur un vrai '
-                    f'historique du joueur." style="cursor:help;">{j["note_pred"]:.2f}'
+                    f'estimée à partir de la Cote du joueur (percentile dans son '
+                    f'poste) plutôt que sur un vrai historique du joueur." '
+                    f'style="cursor:help;">{j["note_pred"]:.2f}'
                     f'<sup style="color:#c8a84b;"> *</sup></span>'
                 )
             else:
@@ -384,6 +414,8 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
         df, cols_journees, df_n1, cols_journees_n1
     )
     note_mediane_poste_n1, note_repli_global_n1 = _mediane_n1_par_poste_cache(df_n1, 'Note')
+    cote_pct_par_joueur = _cote_pct_par_poste_cache(df)
+    distribution_note_n1_par_poste, distribution_note_n1_globale = _distribution_n1_par_poste_cache(df_n1, 'Note')
 
     separateur("MODE D'ANALYSE")
     mode_analyse = st.radio(
@@ -592,7 +624,10 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                     moyennes_lignes, notes_mediane_poste, buts_mediane_poste, club=club,
                     moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
                     ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
-                    note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
+                    note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1,
+                    cote_pct_par_joueur=cote_pct_par_joueur,
+                    distribution_note_n1_par_poste=distribution_note_n1_par_poste,
+                    distribution_note_n1_globale=distribution_note_n1_globale
                 )
                 if info:
                     titu_info.append(info)
@@ -620,7 +655,10 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
                 moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
                 ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
-                note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
+                note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1,
+                cote_pct_par_joueur=cote_pct_par_joueur,
+                distribution_note_n1_par_poste=distribution_note_n1_par_poste,
+                distribution_note_n1_globale=distribution_note_n1_globale
             )
 
         # Alertes joueurs non trouvés
@@ -664,7 +702,10 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
                 moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
                 ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global,
-                note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1
+                note_mediane_poste_n1=note_mediane_poste_n1, note_repli_global_n1=note_repli_global_n1,
+                cote_pct_par_joueur=cote_pct_par_joueur,
+                distribution_note_n1_par_poste=distribution_note_n1_par_poste,
+                distribution_note_n1_globale=distribution_note_n1_globale
             )
             if not info_rempl:
                 continue

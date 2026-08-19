@@ -439,6 +439,58 @@ def mediane_n1_par_poste(df_n1, colonne):
     return mediane_par_poste, mediane_globale
 
 
+def construire_distribution_n1_par_poste(df_n1, colonne):
+    """Distribution N-1 (saison précédente) complète d'une colonne, par poste —
+    pendant de mediane_n1_par_poste() mais renvoyant toutes les valeurs plutôt
+    que leur seule médiane, pour permettre une lecture à n'importe quel
+    percentile (note_percentile_n1 ci-dessous) plutôt qu'une valeur unique
+    partagée par tout le poste. Les valeurs zéro ne sont PAS filtrées (même
+    convention que mediane_n1_par_poste), seules les valeurs manquantes (NaN)
+    le sont.
+
+    Renvoie (distribution_par_poste: dict[str, np.ndarray], distribution_globale: np.ndarray)."""
+    valeurs = pd.to_numeric(df_n1[colonne], errors='coerce')
+    df_valide = df_n1.loc[valeurs.notna()]
+    distribution_par_poste = {
+        poste: pd.to_numeric(groupe[colonne], errors='coerce').dropna().to_numpy()
+        for poste, groupe in df_valide.groupby('Poste')
+    }
+    distribution_globale = pd.to_numeric(df_valide[colonne], errors='coerce').dropna().to_numpy()
+    return distribution_par_poste, distribution_globale
+
+
+def note_percentile_n1(percentile, poste, distribution_par_poste, distribution_globale=None):
+    """Repli par interpolation continue (np.quantile, pas de tranches fixes) :
+    lit la valeur au même percentile dans la distribution N-1 du poste que
+    celui occupé par le joueur dans la distribution de Cote de la saison en
+    cours (percentile calculé par l'appelant, ex.
+    df.groupby('Poste')['Cote'].rank(pct=True)) — remplace le repli "médiane
+    plate du poste" (mediane_n1_par_poste) par une estimation individualisée :
+    un joueur à Cote élevée pour son poste (le marché l'évalue comme un
+    titulaire fort, même sans historique Ligue 1 personnel, ex. transfert
+    étranger coté) reçoit une Note N-1 de repli tirée du haut de la
+    distribution du poste plutôt que la médiane générique partagée par tout le
+    monde, y compris les remplaçants peu cotés du même poste.
+
+    Interpolation continue plutôt que découpage en tranches fixes (ex. 5%) :
+    sur les postes à faible effectif N-1 (ex. gardien, ~40-60 lignes), des
+    tranches fixes ne contiendraient que 2-3 joueurs chacune et créeraient des
+    sauts arbitraires aux frontières — np.quantile() interpole en continu
+    entre les valeurs observées, quel que soit l'effectif.
+
+    percentile peut être None/NaN (ex. Cote manquante ou joueur absent de la
+    distribution de Cote courante) : renvoie alors None, laissant l'appelant
+    retomber sur son propre repli (médiane plate)."""
+    if percentile is None or pd.isna(percentile):
+        return None
+    distribution = distribution_par_poste.get(poste)
+    if distribution is None or len(distribution) == 0:
+        distribution = distribution_globale
+    if distribution is None or len(distribution) == 0:
+        return None
+    return float(np.quantile(distribution, percentile))
+
+
 def calculer_repli_stabilisation(df, cols_journees):
     """Précalcule, une fois pour tout le dataframe chargé, les valeurs de repli
     par poste utilisées par stabiliser_stats_proba_but() (médiane de la
@@ -662,7 +714,9 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
                      moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None, club=None,
                      moyenne_mediane_poste=None, moyenne_repli_global=None,
                      ecart_type_mediane_poste=None, ecart_type_repli_global=None,
-                     note_mediane_poste_n1=None, note_repli_global_n1=None):
+                     note_mediane_poste_n1=None, note_repli_global_n1=None,
+                     cote_pct_par_joueur=None, distribution_note_n1_par_poste=None,
+                     distribution_note_n1_globale=None):
     row = chercher_lignes_joueur(nom_joueur, df, club)
     if len(row) == 0:
         return None
@@ -674,22 +728,37 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
         row_n1, cols_n1 if cols_n1 is not None else cols_journees,
         row, cols_journees, journee_actuelle
     )
-    # Repli médiane N-1 du poste (même mediane_n1_par_poste() et même convention
-    # que Conseiller Hebdo/Mercato) quand predire_note_hybride() ne trouve
-    # littéralement AUCUNE donnée exploitable, ni cette saison ni en N-1 (ex.
-    # Openda, transfert sans passage en Ligue 1 la saison passée) : sans ce
-    # repli, note_pred restait à None ("Données insuffisantes" affiché sur
-    # Simuler le match) alors que proba_but, lui, utilise déjà ce même genre de
-    # repli poste (stabiliser_stats_proba_but ci-dessous) — incohérence visible
-    # côte à côte (ex. "Données insuffisantes" + "Proba But MPG 9%" sur la même
-    # ligne). note_estimee (exposée dans le dict retourné) marque ce cas pour
+    # Repli par interpolation continue par percentile (note_percentile_n1, cf.
+    # modele.py) quand predire_note_hybride() ne trouve littéralement AUCUNE
+    # donnée exploitable, ni cette saison ni en N-1 (ex. Openda, transfert sans
+    # passage en Ligue 1 la saison passée) : sans ce repli, note_pred restait à
+    # None ("Données insuffisantes" affiché sur Simuler le match) alors que
+    # proba_but, lui, utilise déjà ce même genre de repli poste
+    # (stabiliser_stats_proba_but ci-dessous) — incohérence visible côte à côte
+    # (ex. "Données insuffisantes" + "Proba But MPG 9%" sur la même ligne).
+    # note_estimee (exposée dans le dict retourné) marque ce cas pour
     # l'affichage, même esprit que le badge "Estimé (poste)" de Hebdo ou
     # l'astérisque de Mercato — jamais une vraie prédiction à confondre avec les
     # autres.
+    #
+    # Plutôt qu'une simple médiane N-1 du poste (mediane_n1_par_poste, partagée
+    # par TOUS les joueurs du poste, y compris les remplaçants peu cotés), on
+    # lit la Note au percentile de Cote du joueur (parmi les joueurs de son
+    # poste, saison en cours) dans la distribution N-1 du même poste — un
+    # joueur à Cote élevée pour son poste reçoit ainsi un repli cohérent avec
+    # l'évaluation du marché plutôt que la valeur générique du poste. Repli sur
+    # l'ancienne médiane plate si le percentile de Cote est indisponible (ex.
+    # Cote manquante) ou si l'appelant n'a pas fourni ces nouveaux paramètres.
     note_estimee = note_pred is None
-    if note_estimee and note_mediane_poste_n1 is not None:
-        note_pred = note_mediane_poste_n1.get(poste, note_repli_global_n1)
-        if pd.isna(note_pred):
+    if note_estimee:
+        if cote_pct_par_joueur is not None and distribution_note_n1_par_poste is not None:
+            cote_pct = cote_pct_par_joueur.get(row.name)
+            note_pred = note_percentile_n1(
+                cote_pct, poste, distribution_note_n1_par_poste, distribution_note_n1_globale
+            )
+        if note_pred is None and note_mediane_poste_n1 is not None:
+            note_pred = note_mediane_poste_n1.get(poste, note_repli_global_n1)
+        if note_pred is not None and pd.isna(note_pred):
             note_pred = None
     note_estimee = note_estimee and note_pred is not None
 
