@@ -659,7 +659,9 @@ def chercher_lignes_joueur(nom_joueur, df, club=None):
 
 
 def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, journee_actuelle=999,
-                     moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None, club=None):
+                     moyennes_lignes=None, notes_mediane_poste=None, buts_mediane_poste=None, club=None,
+                     moyenne_mediane_poste=None, moyenne_repli_global=None,
+                     ecart_type_mediane_poste=None, ecart_type_repli_global=None):
     row = chercher_lignes_joueur(nom_joueur, df, club)
     if len(row) == 0:
         return None
@@ -698,9 +700,34 @@ def get_joueur_info(nom_joueur, df, cols_journees, df_n1=None, cols_n1=None, jou
                 buts_mediane_poste.get(poste, 0) if buts_mediane_poste is not None else 0
             )
 
-    notes_jouees = [row[col] for col in cols_journees if row[col] > 0]
-    moyenne_notes = np.mean(notes_jouees) if notes_jouees else (note_pred if note_pred is not None else 5.0)
-    ecart_type_notes = np.std(notes_jouees) if notes_jouees else 0.0
+    # Moyenne/écart-type stabilisés via stabiliser_stats_proba_but() — même
+    # fonction, même repli (N-1 puis médiane du poste) que celle utilisée par
+    # la simulation Monte Carlo réelle (utils/adversaire.py::_joueur_vers_mc)
+    # — plutôt qu'un calcul dupliqué et non stabilisé ici : sans historique
+    # personnel, l'ancien code recentrait bien moyenne_notes sur note_pred
+    # mais codait ecart_type_notes en dur à 0.0 (aucun repli de variance), ce
+    # qui rendait simuler_proba_but() quasi déterministe (badge Proba But à
+    # 0%/100%) pour tout joueur sans match cette saison.
+    moyenne_repli_poste = (
+        moyenne_mediane_poste.get(poste, moyenne_repli_global)
+        if moyenne_mediane_poste is not None else moyenne_repli_global
+    )
+    ecart_type_repli_poste = (
+        ecart_type_mediane_poste.get(poste, ecart_type_repli_global)
+        if ecart_type_mediane_poste is not None else ecart_type_repli_global
+    )
+    moyenne_notes, ecart_type_notes = stabiliser_stats_proba_but(
+        row_n1, cols_n1 if cols_n1 is not None else cols_journees,
+        row, cols_journees, journee_actuelle,
+        moyenne_repli_poste, ecart_type_repli_poste
+    )
+    if moyenne_notes is None:
+        # Repli ultime si l'appelant n'a fourni aucun repli poste/global (les 3
+        # sites d'appel actuels en fournissent toujours un) : même valeur que
+        # l'ancien comportement, jamais un écart-type nul pour autant.
+        moyenne_notes = note_pred if note_pred is not None else 5.0
+    if ecart_type_notes is None:
+        ecart_type_notes = 1.0
     proba_but = (
         simuler_proba_but(moyenne_notes, ecart_type_notes, poste, moyennes_lignes)
         if moyennes_lignes is not None else 0.0

@@ -101,6 +101,20 @@ def _detail_configuration(label, valeur, delta=None):
     )
 
 
+def _poste_du_nom(nom_ligne, df):
+    """Résout le Poste d'une ligne "Nom" ou "Nom (Club)" (même syntaxe de
+    désambiguïsation que _analyser_lignes_joueurs ci-dessous) — None si le nom
+    est introuvable ou encore ambigu (homonyme non levé). Utilisée pour filtrer
+    le menu "Remplaçant" de "Configurer les remplacements" au même poste que le
+    titulaire choisi (un gardien ne doit pas pouvoir remplacer un attaquant)."""
+    m = _MOTIF_NOM_CLUB.match(nom_ligne)
+    nom, club = (m.group(1).strip(), m.group(2).strip()) if m else (nom_ligne, None)
+    candidats = chercher_lignes_joueur(nom, df, club)
+    if len(candidats) == 1:
+        return candidats.iloc[0]['Poste']
+    return None
+
+
 def _analyser_lignes_joueurs(texte, df, exiger_onze):
     """Analyse les lignes saisies dans un champ Titulaires/Remplaçants de Simuler le match —
     adapté de app.py::_verifier_noms_joueurs (même standard normaliser_recherche, via
@@ -214,12 +228,16 @@ bonus_key_map = {
 }
 
 def meilleure_compo(noms_joueurs, df, cols_journees, df_n1, cols_n1, journee_actuelle,
-                     moyennes_lignes, notes_mediane_poste, buts_mediane_poste):
+                     moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
+                     moyenne_mediane_poste=None, moyenne_repli_global=None,
+                     ecart_type_mediane_poste=None, ecart_type_repli_global=None):
     joueurs_info = []
     for nom in [n.strip() for n in noms_joueurs.split('\n') if n.strip()]:
         info = get_joueur_info(
             nom, df, cols_journees, df_n1, cols_n1, journee_actuelle,
-            moyennes_lignes, notes_mediane_poste, buts_mediane_poste
+            moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
+            moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
+            ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
         )
         if info and info['note_pred'] is not None:
             joueurs_info.append(info)
@@ -422,11 +440,18 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 min_value=0, max_value=len(noms_mes_titu), value=0, step=1,
                 key="nb_regles_remplacement"
             )
+            # Postes résolus une fois pour tous les remplaçants (pas les titulaires,
+            # dont le poste dépend du titulaire choisi par règle, donc résolu à la
+            # volée ci-dessous) — utilisés pour ne proposer, dans "Remplaçant", que
+            # les joueurs du même poste que le titulaire sélectionné : sans ce
+            # filtre, rien n'empêchait de faire entrer un gardien à la place d'un
+            # attaquant.
+            poste_par_rempl = {nom: _poste_du_nom(nom, df) for nom in noms_mes_rempl}
             for i in range(int(nb_regles_remplacement)):
                 st.markdown(f"**Remplacement {i + 1}**")
                 rc1, rc2, rc3 = st.columns(3)
                 with rc1:
-                    st.selectbox("Titulaire", noms_mes_titu, key=f"rempl_titu_{i}")
+                    titu_choisi = st.selectbox("Titulaire", noms_mes_titu, key=f"rempl_titu_{i}")
                 with rc2:
                     st.number_input(
                         "Seuil de note (remplacement si en dessous)",
@@ -434,7 +459,30 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                         key=f"rempl_seuil_{i}"
                     )
                 with rc3:
-                    st.selectbox("Remplaçant", noms_mes_rempl, key=f"rempl_nom_{i}")
+                    poste_titu = _poste_du_nom(titu_choisi, df) if titu_choisi else None
+                    if poste_titu is None:
+                        # Titulaire introuvable/ambigu (ex. homonyme non levé) :
+                        # aucun poste de référence pour filtrer — repli sur la
+                        # liste complète plutôt que de bloquer la sélection.
+                        remplacants_du_poste = noms_mes_rempl
+                    else:
+                        remplacants_du_poste = [
+                            n for n in noms_mes_rempl if poste_par_rempl.get(n) == poste_titu
+                        ]
+                    # Auto-corrige la valeur mémorisée si elle ne correspond plus aux
+                    # options courantes (ex. Titulaire changé de poste depuis le
+                    # dernier choix de Remplaçant) — sans ça, Streamlit lève une
+                    # exception dès que la valeur en session_state n'est plus dans
+                    # la liste filtrée (même défaut que Capitaine ci-dessous).
+                    if st.session_state.get(f"rempl_nom_{i}") not in remplacants_du_poste:
+                        st.session_state[f"rempl_nom_{i}"] = (
+                            remplacants_du_poste[0] if remplacants_du_poste else None
+                        )
+                    if remplacants_du_poste:
+                        st.selectbox("Remplaçant", remplacants_du_poste, key=f"rempl_nom_{i}")
+                    else:
+                        st.selectbox("Remplaçant", [], key=f"rempl_nom_{i}",
+                                      placeholder=f"Aucun remplaçant au poste {poste_titu}")
 
     # Auto-corrige la valeur mémorisée si elle ne correspond plus à un titulaire
     # actuel (ex. liste encore vide au tout premier rendu, puis remplie ensuite, ou
@@ -513,7 +561,9 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             for nom, club in lignes_ok:
                 info = get_joueur_info(
                     nom, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
-                    moyennes_lignes, notes_mediane_poste, buts_mediane_poste, club=club
+                    moyennes_lignes, notes_mediane_poste, buts_mediane_poste, club=club,
+                    moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
+                    ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
                 )
                 if info:
                     titu_info.append(info)
@@ -538,7 +588,9 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
             equipe_adv, _ = meilleure_compo(
                 adv_joueurs, df, cols_journees,
                 df_n1, cols_journees_n1, journee_actuelle,
-                moyennes_lignes, notes_mediane_poste, buts_mediane_poste
+                moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
+                moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
+                ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
             )
 
         # Alertes joueurs non trouvés
@@ -579,7 +631,9 @@ def afficher_adversaire(df, cols_journees, df_n1, cols_journees_n1, journee_actu
                 continue
             info_rempl = get_joueur_info(
                 nom_rempl_regle, df, cols_journees, df_n1, cols_journees_n1, journee_actuelle,
-                moyennes_lignes, notes_mediane_poste, buts_mediane_poste
+                moyennes_lignes, notes_mediane_poste, buts_mediane_poste,
+                moyenne_mediane_poste=moyenne_mediane_poste, moyenne_repli_global=moyenne_repli_global,
+                ecart_type_mediane_poste=ecart_type_mediane_poste, ecart_type_repli_global=ecart_type_repli_global
             )
             if not info_rempl:
                 continue
