@@ -35,13 +35,26 @@ def _renommer_colonnes_journee(df):
     utilisent déjà 'DN') vers 'DN' — sans ce renommage, cols_journees
     (app.py) serait vide et casserait la détection de journée/Forme 6J/
     Matchs joués dans toute l'app. 'DMI' n'est jamais concerné (aucun
-    chiffre après le 'D')."""
+    chiffre après le 'D').
+
+    Renvoie aussi cols_recyclables : les colonnes renommées ici (donc
+    arrivées au format 'D-N' dans le fichier source) — par opposition à une
+    colonne déjà au format 'DN' avant renommage (ex. 'D1' dès que la
+    journée 1 a été réellement jouée, cf. le fichier post-J1 26-27), qui
+    contient une vraie donnée de la saison en cours et n'est donc PAS une
+    candidate au nettoyage de contamination N-1 (_nettoyer_contamination_n1
+    ci-dessous) : cette distinction évite de recorriger/écraser une colonne
+    réelle simplement parce qu'elle porte un nom 'DN' comme les colonnes
+    recyclées."""
     renommage = {}
+    cols_recyclables = []
     for col in df.columns:
         m = re.match(r'^D-(\d{1,2})$', str(col))
         if m:
-            renommage[col] = f"D{m.group(1)}"
-    return df.rename(columns=renommage)
+            nouveau_nom = f"D{m.group(1)}"
+            renommage[col] = nouveau_nom
+            cols_recyclables.append(nouveau_nom)
+    return df.rename(columns=renommage), cols_recyclables
 
 
 def _renommer_colonnes_encheres(df):
@@ -66,7 +79,7 @@ def _detecter_cols_journees(df):
     return [c for c in df.columns if re.match(r'^D\d{1,2}$', str(c))]
 
 
-def _nettoyer_contamination_n1(df, df_n1, cols_journees):
+def _nettoyer_contamination_n1(df, df_n1, cols_journees, cols_a_verifier):
     """Détecte et corrige le recyclage de la saison N-1 dans le fichier à
     taille unique 26-27 : avant les vrais résultats de matchs (et donc avant
     les 3 exports par taille de ligue), l'export MPGStats observé remplit
@@ -79,11 +92,21 @@ def _nettoyer_contamination_n1(df, df_n1, cols_journees):
     un recyclage de N-1, rien n'est corrigé et un avertissement est levé
     plutôt que d'écraser silencieusement de vrais résultats.
 
+    cols_journees : TOUTES les colonnes de journée (y compris une éventuelle
+    D1 déjà réellement jouée), utilisées telles quelles pour compter les
+    matchs joués (partie 2 ci-dessous) — une vraie journée jouée doit compter
+    comme un match, pas seulement les colonnes recyclables.
+    cols_a_verifier : le sous-ensemble RECYCLABLE (colonnes arrivées au
+    format 'D-N', cf. _renommer_colonnes_journee) sur lequel porte le
+    diagnostic ET la correction de contamination — une colonne déjà réelle
+    (ex. 'D1' post-J1) n'y figure jamais, donc n'est ni inspectée ni écrasée
+    par cette fonction.
+
     Retourne (df_corrige, rapport: dict)."""
     cols_journees_n1 = [c for c in df_n1.columns if re.match(r'^D\d{1,2}$', str(c))]
 
-    # --- 1. D1-D34 : décision GLOBALE (tout ou rien), pas colonne par colonne
-    # ---
+    # --- 1. Colonnes recyclables : décision GLOBALE (tout ou rien), pas
+    # colonne par colonne ---
     # Le bug observé est un recyclage EN BLOC (toutes les journées de tous les
     # joueurs) : chercher un signal agrégé sur l'ensemble des joueurs, plutôt
     # que douze micro-décisions par journée, colle mieux à la nature réelle du
@@ -94,7 +117,7 @@ def _nettoyer_contamination_n1(df, df_n1, cols_journees):
         row_n1 = trouver_historique_n1(row['Joueur'], row['Poste'], df_n1)
         if row_n1 is None:
             continue
-        cellules_non_nulles = [c for c in cols_journees if row[c] != 0]
+        cellules_non_nulles = [c for c in cols_a_verifier if row[c] != 0]
         if len(cellules_non_nulles) < MATCHS_MIN_ECHANTILLON:
             continue
         joueurs_verifiables += 1
@@ -108,7 +131,7 @@ def _nettoyer_contamination_n1(df, df_n1, cols_journees):
     taux_contamination_d = (joueurs_contamines / joueurs_verifiables) if joueurs_verifiables else 0.0
     d_corrigees = taux_contamination_d >= SEUIL_CONTAMINATION
     if d_corrigees:
-        for c in cols_journees:
+        for c in cols_a_verifier:
             df[c] = 0
 
     # --- 2. Note/Buts/%Titu/Variation : invariant indépendant du diagnostic
@@ -128,6 +151,8 @@ def _nettoyer_contamination_n1(df, df_n1, cols_journees):
         df.loc[joueurs_sans_match, c] = 0
 
     rapport = {
+        'cols_a_verifier': list(cols_a_verifier),
+        'cols_reelles': [c for c in cols_journees if c not in cols_a_verifier],
         'joueurs_verifiables_d': joueurs_verifiables,
         'joueurs_contamines_d': joueurs_contamines,
         'taux_contamination_d': taux_contamination_d,
@@ -144,14 +169,17 @@ def charger_fichier_unique(fichier_entree):
     normal (renommage des colonnes journée, correction des noms) PLUS le
     nettoyage automatique du recyclage N-1 (voir _nettoyer_contamination_n1).
 
-    À N'UTILISER QUE tant qu'aucun vrai résultat 26-27 n'est disponible.
-    Une fois les 3 exports par taille de ligue disponibles, bascule sur
-    scripts/fusionner_joueurs.py — ne réutilise plus ce script-ci (le
-    garde-fou SEUIL_CONTAMINATION limite le risque d'un mauvais usage, mais
-    scripts/fusionner_joueurs.py reste le bon outil une fois la vraie saison
-    lancée)."""
+    Reste utilisable une fois les premières journées réellement jouées : les
+    colonnes déjà réelles (arrivées au format 'DN' plutôt que 'D-N', cf.
+    _renommer_colonnes_journee) sont automatiquement exclues du nettoyage de
+    contamination, seules les colonnes encore au format recyclé 'D-N' sont
+    vérifiées/corrigées. Une fois les 3 exports par taille de ligue
+    disponibles, bascule sur scripts/fusionner_joueurs.py — ne réutilise plus
+    ce script-ci (le garde-fou SEUIL_CONTAMINATION limite le risque d'un
+    mauvais usage, mais scripts/fusionner_joueurs.py reste le bon outil une
+    fois la vraie saison bien avancée)."""
     df = pd.read_excel(fichier_entree)
-    df = _renommer_colonnes_journee(df)
+    df, cols_recyclables = _renommer_colonnes_journee(df)
     df, nb_colonnes_encheres_renommees = _renommer_colonnes_encheres(df)
     df = _corriger_noms(df)
     _verifier_cle_unique(df, fichier_entree)
@@ -176,7 +204,7 @@ def charger_fichier_unique(fichier_entree):
     for c in cols_journees_n1:
         df_n1[c] = df_n1[c].apply(nettoyer_note)
 
-    df, rapport = _nettoyer_contamination_n1(df, df_n1, cols_journees)
+    df, rapport = _nettoyer_contamination_n1(df, df_n1, cols_journees, cols_recyclables)
     rapport['nb_colonnes_encheres_renommees'] = nb_colonnes_encheres_renommees
     return df, rapport
 
@@ -199,23 +227,28 @@ def main():
         print("ℹ️  Aucune colonne d'enchères à renommer (fichier sans données d'enchères, "
               "ou déjà aux noms attendus).")
 
+    if rapport['cols_reelles']:
+        print(f"ℹ️  Colonnes déjà réelles (format 'DN' dans le fichier source, jamais touchées "
+              f"par le nettoyage de contamination) : {', '.join(sorted(rapport['cols_reelles'], key=lambda c: int(c[1:])))}")
+    print(f"Colonnes recyclables vérifiées (format 'D-N' dans le fichier source) : "
+          f"{len(rapport['cols_a_verifier'])}")
     print(f"Journées vérifiables (historique N-1 résolu, >= {MATCHS_MIN_ECHANTILLON} "
           f"journées non nulles) : {rapport['joueurs_verifiables_d']} joueurs")
-    print(f"Taux de contamination D1-D34 détecté : {rapport['taux_contamination_d']:.1%} "
+    print(f"Taux de contamination détecté (colonnes recyclables) : {rapport['taux_contamination_d']:.1%} "
           f"({rapport['joueurs_contamines_d']} joueurs)")
 
     if rapport['d_colonnes_corrigees']:
-        print("✅ Recyclage N-1 confirmé sur D1-D34 (>= 50%) — remis à zéro pour tous les joueurs.")
+        print("✅ Recyclage N-1 confirmé (>= 50%) — colonnes recyclables remises à zéro pour tous les joueurs.")
     else:
         print(
-            "⚠️  Taux de contamination sous le seuil (50%) — D1-D34 laissées TELLES QUELLES. "
-            "Si la vraie saison 26-27 a commencé, c'est le comportement attendu (ne touche "
+            "⚠️  Taux de contamination sous le seuil (50%) — colonnes recyclables laissées TELLES "
+            "QUELLES. Si la vraie saison 26-27 a commencé, c'est le comportement attendu (ne touche "
             "jamais de vrais résultats). Si ce fichier est censé être pré-saison, vérifie "
             "manuellement avant de continuer : quelque chose ne correspond pas au cas connu."
         )
 
     print(f"Note/Buts/%Titu/Variation remis à zéro pour les joueurs à 0 match cette saison "
-          f"(après correction D1-D34 éventuelle) : {rapport['nb_agregats_corriges']} joueur(s) concerné(s).")
+          f"(après correction des colonnes recyclables éventuelle) : {rapport['nb_agregats_corriges']} joueur(s) concerné(s).")
 
     df.to_excel(FICHIER_SORTIE, index=False)
     print(f"✅ Écrit : {len(df)} joueurs -> {FICHIER_SORTIE}")
